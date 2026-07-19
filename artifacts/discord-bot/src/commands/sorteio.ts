@@ -62,7 +62,13 @@ async function checkAccess(
     });
     return false;
   }
-  const member = interaction.member as GuildMember | null;
+
+  // interaction.member pode ser APIInteractionGuildMember (objeto cru) em vez de
+  // GuildMember (com roles.cache). Buscamos o membro real para garantir o cache.
+  const member =
+    interaction.guild?.members.cache.get(interaction.user.id) ??
+    (await interaction.guild?.members.fetch(interaction.user.id).catch(() => null));
+
   if (!member || !hasAllowedRole(member)) {
     await interaction.reply({
       content: '❌ Você não tem permissão para usar este comando.',
