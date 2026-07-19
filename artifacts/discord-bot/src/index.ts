@@ -7,6 +7,11 @@ import {
 } from 'discord.js';
 import { handleSorteio, handleSorteioModal } from './commands/sorteio.js';
 import { handleWelcome } from './events/welcome.js';
+import {
+  handleTicketSetup,
+  handleTicketSelect,
+  handleTicketClose,
+} from './commands/ticket.js';
 
 // Força stdout sem buffer para que os logs apareçam no workflow
 process.stdout.write('');
@@ -57,25 +62,47 @@ client.on(Events.GuildMemberAdd, (member: GuildMember) => {
   );
 });
 
-// ── Interações (slash commands + modais) ─────────────────────────────────────
+// ── Interações (slash commands, modais, selects, botões) ─────────────────────
 client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   try {
-    if (
-      interaction.isChatInputCommand() &&
-      interaction.commandName === 'sorteio'
-    ) {
-      await handleSorteio(interaction);
-    } else if (
-      interaction.isModalSubmit() &&
-      interaction.customId.startsWith('sorteio_')
-    ) {
-      await handleSorteioModal(interaction);
+    // ── Slash commands ──────────────────────────────────────────────────────
+    if (interaction.isChatInputCommand()) {
+      if (interaction.commandName === 'sorteio') {
+        await handleSorteio(interaction);
+      } else if (interaction.commandName === 'ticket-painel') {
+        await handleTicketSetup(interaction);
+      }
+      return;
+    }
+
+    // ── Modais ──────────────────────────────────────────────────────────────
+    if (interaction.isModalSubmit()) {
+      if (interaction.customId.startsWith('sorteio_')) {
+        await handleSorteioModal(interaction);
+      }
+      return;
+    }
+
+    // ── Select menus ────────────────────────────────────────────────────────
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === 'ticket_select') {
+        await handleTicketSelect(interaction);
+      }
+      return;
+    }
+
+    // ── Botões ──────────────────────────────────────────────────────────────
+    if (interaction.isButton()) {
+      if (interaction.customId === 'ticket_close') {
+        await handleTicketClose(interaction);
+      }
+      return;
     }
   } catch (err) {
     console.error('[Interaction] Erro:', err);
-    if (interaction.isRepliable() && !interaction.replied) {
+    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
       await interaction
-        .reply({ content: '❌ Ocorreu um erro ao processar o comando.', ephemeral: true })
+        .reply({ content: '❌ Ocorreu um erro ao processar a interação.', ephemeral: true })
         .catch(() => null);
     }
   }

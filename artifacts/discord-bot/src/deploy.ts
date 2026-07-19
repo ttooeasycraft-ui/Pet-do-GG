@@ -2,7 +2,7 @@
  * Registra os slash commands no servidor (guild).
  * Execute com: pnpm --filter @workspace/discord-bot run deploy
  */
-import { REST, Routes, SlashCommandBuilder } from 'discord.js';
+import { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 
 const token  = process.env.DISCORD_BOT_TOKEN;
 const guildId = process.env.GUILD_ID;
@@ -20,6 +20,7 @@ const clientId = Buffer.from(token.split('.')[0], 'base64').toString('ascii');
 console.log(`📦 Registrando comandos para aplicação: ${clientId}`);
 
 const commands = [
+  // ── /sorteio ──────────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName('sorteio')
     .setDescription('Sorteia jogadores para uma partida de Overwatch')
@@ -41,6 +42,13 @@ const commands = [
         .setMinValue(2)
         .setMaxValue(12)
     ),
+
+  // ── /ticket-painel ────────────────────────────────────────────────────────
+  new SlashCommandBuilder()
+    .setName('ticket-painel')
+    .setDescription('Envia o painel de tickets no canal configurado (apenas administradores)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
 ].map((cmd) => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
