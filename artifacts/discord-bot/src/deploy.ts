@@ -4,35 +4,42 @@
  */
 import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 
-const token = process.env.DISCORD_BOT_TOKEN;
+const token  = process.env.DISCORD_BOT_TOKEN;
 const guildId = process.env.GUILD_ID;
 
 if (!token) {
   console.error('❌ DISCORD_BOT_TOKEN não configurado.');
   process.exit(1);
 }
-if (!guildId) {
-  console.error('❌ GUILD_ID não configurado.');
+if (!guildId || !/^\d{17,20}$/.test(guildId)) {
+  console.error(`❌ GUILD_ID inválido: "${guildId}"`);
   process.exit(1);
 }
 
-// Extrai o Application ID do token (base64 da primeira parte)
 const clientId = Buffer.from(token.split('.')[0], 'base64').toString('ascii');
 console.log(`📦 Registrando comandos para aplicação: ${clientId}`);
 
 const commands = [
   new SlashCommandBuilder()
     .setName('sorteio')
-    .setDescription('Sorteia jogadores para uma partida')
+    .setDescription('Sorteia jogadores para uma partida de Overwatch')
     .addStringOption((opt) =>
       opt
         .setName('modo')
         .setDescription('Escolha o modo de sorteio')
         .setRequired(true)
         .addChoices(
-          { name: '🛡️⚔️💊 Por Função (1 Tanque, 2 Dano, 2 Suporte)', value: 'funcoes' },
-          { name: '🎲 Simples — 5 aleatórios de uma lista', value: 'simples' }
+          { name: '🛡️⚔️❤️ Por Função (1 Tank · 2 Dano · 2 Suporte)', value: 'funcoes' },
+          { name: '🎲 Simples — N aleatórios de uma lista', value: 'simples' }
         )
+    )
+    .addIntegerOption((opt) =>
+      opt
+        .setName('quantidade')
+        .setDescription('Quantos jogadores sortear (só para o modo Simples — padrão: 5)')
+        .setRequired(false)
+        .setMinValue(2)
+        .setMaxValue(12)
     ),
 ].map((cmd) => cmd.toJSON());
 

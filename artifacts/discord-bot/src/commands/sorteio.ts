@@ -11,10 +11,8 @@ import {
 
 // ─── Configuração de acesso ───────────────────────────────────────────────────
 
-/** Canal exclusivo onde o /sorteio pode ser usado */
 const SORTEIO_CHANNEL_ID = '1524833320658141394';
 
-/** Cargos autorizados a usar o /sorteio */
 const ALLOWED_ROLE_IDS = [
   '1503440562211127316', // ♛ 𝑺𝒖𝒑𝒓𝒆𝒎𝒂 ♛
   '1481792319328878713', // 🜲 Thᥱ G᥆ᥲt᥉  🜲
@@ -22,14 +20,16 @@ const ALLOWED_ROLE_IDS = [
   '1520888304835493888', // ⋆ 𝑪𝒐𝒐𝒓𝒅. 𝒅𝒆 𝑺𝒖𝒑𝒐𝒓𝒕𝒆 ⋆
 ];
 
+// Cores temáticas Overwatch
+const OW_ORANGE = 0xF99E1A; // dourado/laranja do logo
+const OW_BLUE   = 0x00B4F0; // azul claro Overwatch
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Verifica se o membro tem ao menos um dos cargos autorizados */
 function hasAllowedRole(member: GuildMember): boolean {
   return ALLOWED_ROLE_IDS.some((id) => member.roles.cache.has(id));
 }
 
-/** Separa uma lista de nomes/menções por linha ou vírgula e remove vazios */
 function parseList(raw: string): string[] {
   return raw
     .split(/[\n,]+/)
@@ -37,7 +37,6 @@ function parseList(raw: string): string[] {
     .filter(Boolean);
 }
 
-/** Embaralha um array (Fisher-Yates) */
 function shuffle<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -47,26 +46,22 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-/** Sorteia `n` itens de uma lista embaralhada */
 function pick<T>(arr: T[], n: number): T[] {
   return shuffle(arr).slice(0, n);
 }
 
-// ─── Validação de acesso ─────────────────────────────────────────────────────
+// ─── Validação de acesso ──────────────────────────────────────────────────────
 
 async function checkAccess(
   interaction: ChatInputCommandInteraction
 ): Promise<boolean> {
-  // Verifica canal
   if (interaction.channelId !== SORTEIO_CHANNEL_ID) {
     await interaction.reply({
-      content: `❌ Este comando só pode ser usado no canal <#${SORTEIO_CHANNEL_ID}>.`,
+      content: `❌ Este comando só pode ser usado em <#${SORTEIO_CHANNEL_ID}>.`,
       ephemeral: true,
     });
     return false;
   }
-
-  // Verifica cargo
   const member = interaction.member as GuildMember | null;
   if (!member || !hasAllowedRole(member)) {
     await interaction.reply({
@@ -75,8 +70,66 @@ async function checkAccess(
     });
     return false;
   }
-
   return true;
+}
+
+// ─── Embed de resultado: Por Função ──────────────────────────────────────────
+
+function buildFuncoesEmbed(
+  tank: string[],
+  dano: string[],
+  suporte: string[]
+): EmbedBuilder {
+  const sep = '\u200B'; // zero-width space para espaçamento visual
+
+  return new EmbedBuilder()
+    .setColor(OW_ORANGE)
+    .setTitle('⚡ SORTEIO OVERWATCH ⚡')
+    .setDescription(
+      '> Os heróis foram escolhidos. Boa sorte no campo de batalha!\n' + sep
+    )
+    .addFields(
+      {
+        name: '🛡️  __Tanque__',
+        value: tank.map((n) => `╠ **${n}**`).join('\n') + '\n' + sep,
+        inline: false,
+      },
+      {
+        name: '⚔️  __Dano__',
+        value: dano.map((n) => `╠ **${n}**`).join('\n') + '\n' + sep,
+        inline: false,
+      },
+      {
+        name: '❤️  __Suporte__',
+        value: suporte.map((n) => `╠ **${n}**`).join('\n') + '\n' + sep,
+        inline: false,
+      },
+    )
+    .setThumbnail('https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Overwatch_circle_logo.svg/240px-Overwatch_circle_logo.svg.png')
+    .setFooter({ text: '🐾 Pet do GG  •  Sorteio Overwatch' })
+    .setTimestamp();
+}
+
+// ─── Embed de resultado: Simples ──────────────────────────────────────────────
+
+function buildSimplesEmbed(sorteados: string[], quantidade: number): EmbedBuilder {
+  const sep = '\u200B';
+  const numbered = sorteados.map((n, i) => `\`${i + 1}.\` **${n}**`).join('\n');
+
+  return new EmbedBuilder()
+    .setColor(OW_BLUE)
+    .setTitle(`⚡ SORTEIO ${quantidade}v${quantidade} ⚡`)
+    .setDescription(
+      `> O destino escolheu os ${quantidade} heróis desta partida!\n${sep}`
+    )
+    .addFields({
+      name: '🎮  __Jogadores sorteados__',
+      value: numbered + '\n' + sep,
+      inline: false,
+    })
+    .setThumbnail('https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Overwatch_circle_logo.svg/240px-Overwatch_circle_logo.svg.png')
+    .setFooter({ text: '🐾 Pet do GG  •  Sorteio Overwatch' })
+    .setTimestamp();
 }
 
 // ─── Comando /sorteio ─────────────────────────────────────────────────────────
@@ -92,33 +145,33 @@ export async function handleSorteio(
   if (modo === 'funcoes') {
     const modal = new ModalBuilder()
       .setCustomId('sorteio_funcoes')
-      .setTitle('Sorteio por Função');
-
-    const tanqueInput = new TextInputBuilder()
-      .setCustomId('tanque')
-      .setLabel('🛡️ Tanques (um por linha ou vírgula)')
-      .setStyle(TextInputStyle.Paragraph)
-      .setPlaceholder('João\nMaria\nPedro')
-      .setRequired(true);
-
-    const danoInput = new TextInputBuilder()
-      .setCustomId('dano')
-      .setLabel('⚔️ Dano (um por linha ou vírgula)')
-      .setStyle(TextInputStyle.Paragraph)
-      .setPlaceholder('Ana\nCarlos\nLuiz\nBia')
-      .setRequired(true);
-
-    const suporteInput = new TextInputBuilder()
-      .setCustomId('suporte')
-      .setLabel('💊 Suporte (um por linha ou vírgula)')
-      .setStyle(TextInputStyle.Paragraph)
-      .setPlaceholder('Fernanda\nRafael')
-      .setRequired(true);
+      .setTitle('⚡ Sorteio Overwatch — Por Função');
 
     modal.addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(tanqueInput),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(danoInput),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(suporteInput)
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('tanque')
+          .setLabel('🛡️ Tanques (um por linha ou vírgula)')
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('Nome1\nNome2\nNome3')
+          .setRequired(true)
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('dano')
+          .setLabel('⚔️ Dano (um por linha ou vírgula)')
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('Nome1\nNome2\nNome3')
+          .setRequired(true)
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('suporte')
+          .setLabel('❤️ Suporte (um por linha ou vírgula)')
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('Nome1\nNome2')
+          .setRequired(true)
+      )
     );
 
     await interaction.showModal(modal);
@@ -126,19 +179,23 @@ export async function handleSorteio(
   }
 
   if (modo === 'simples') {
-    const modal = new ModalBuilder()
-      .setCustomId('sorteio_simples')
-      .setTitle('Sorteio Simples (5v5 / 6v6)');
+    // Quantidade vem da opção do comando (5 ou 6); default = 5
+    const quantidade = interaction.options.getInteger('quantidade') ?? 5;
 
-    const listaInput = new TextInputBuilder()
-      .setCustomId('lista')
-      .setLabel('📋 Lista de jogadores (um por linha ou vírgula)')
-      .setStyle(TextInputStyle.Paragraph)
-      .setPlaceholder('João\nMaria\nPedro\nAna\nCarlos\n...')
-      .setRequired(true);
+    const modal = new ModalBuilder()
+      // Codifica a quantidade no customId para recuperar no submit
+      .setCustomId(`sorteio_simples_${quantidade}`)
+      .setTitle(`⚡ Sorteio ${quantidade}v${quantidade} — Lista de Jogadores`);
 
     modal.addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(listaInput)
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId('lista')
+          .setLabel(`📋 Jogadores (sorteia ${quantidade} — um por linha/vírgula)`)
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('Nome1\nNome2\nNome3\n...')
+          .setRequired(true)
+      )
     );
 
     await interaction.showModal(modal);
@@ -153,16 +210,16 @@ export async function handleSorteioModal(
 ): Promise<void> {
   await interaction.deferReply();
 
-  // ── Modo: por função ──────────────────────────────────────────────────────
+  // ── Por função ────────────────────────────────────────────────────────────
   if (interaction.customId === 'sorteio_funcoes') {
-    const tanques = parseList(interaction.fields.getTextInputValue('tanque'));
-    const danos = parseList(interaction.fields.getTextInputValue('dano'));
+    const tanques  = parseList(interaction.fields.getTextInputValue('tanque'));
+    const danos    = parseList(interaction.fields.getTextInputValue('dano'));
     const suportes = parseList(interaction.fields.getTextInputValue('suporte'));
 
     const erros: string[] = [];
-    if (tanques.length < 1) erros.push('Tanque precisa de ao menos **1** jogador.');
-    if (danos.length < 2) erros.push('Dano precisa de ao menos **2** jogadores.');
-    if (suportes.length < 2) erros.push('Suporte precisa de ao menos **2** jogadores.');
+    if (tanques.length  < 1) erros.push('**Tanque** precisa de ao menos **1** jogador.');
+    if (danos.length    < 2) erros.push('**Dano** precisa de ao menos **2** jogadores.');
+    if (suportes.length < 2) erros.push('**Suporte** precisa de ao menos **2** jogadores.');
 
     if (erros.length > 0) {
       await interaction.editReply({
@@ -171,59 +228,31 @@ export async function handleSorteioModal(
       return;
     }
 
-    const sorteadosTanque = pick(tanques, 1);
-    const sorteadosDano = pick(danos, 2);
-    const sorteadosSuporte = pick(suportes, 2);
-
-    const embed = new EmbedBuilder()
-      .setColor(0x57f287)
-      .setTitle('🎲 Resultado do Sorteio — Por Função')
-      .addFields(
-        {
-          name: '🛡️ Tanque (1)',
-          value: sorteadosTanque.map((n) => `• ${n}`).join('\n'),
-          inline: false,
-        },
-        {
-          name: '⚔️ Dano (2)',
-          value: sorteadosDano.map((n) => `• ${n}`).join('\n'),
-          inline: false,
-        },
-        {
-          name: '💊 Suporte (2)',
-          value: sorteadosSuporte.map((n) => `• ${n}`).join('\n'),
-          inline: false,
-        }
-      )
-      .setFooter({ text: 'Pet do GG • Sorteio' })
-      .setTimestamp();
-
+    const embed = buildFuncoesEmbed(
+      pick(tanques, 1),
+      pick(danos, 2),
+      pick(suportes, 2)
+    );
     await interaction.editReply({ embeds: [embed] });
     return;
   }
 
-  // ── Modo: simples ─────────────────────────────────────────────────────────
-  if (interaction.customId === 'sorteio_simples') {
+  // ── Simples ───────────────────────────────────────────────────────────────
+  if (interaction.customId.startsWith('sorteio_simples_')) {
+    // Recupera a quantidade do customId (ex: "sorteio_simples_6" → 6)
+    const quantidade = parseInt(interaction.customId.split('_')[2] ?? '5', 10);
     const lista = parseList(interaction.fields.getTextInputValue('lista'));
 
-    if (lista.length < 5) {
+    if (lista.length < quantidade) {
       await interaction.editReply({
-        content: `❌ A lista precisa ter ao menos **5 jogadores** para sortear um time de 5. Você enviou ${lista.length}.`,
+        content:
+          `❌ A lista precisa ter ao menos **${quantidade} jogadores** para este sorteio. ` +
+          `Você enviou ${lista.length}.`,
       });
       return;
     }
 
-    const sorteados = pick(lista, 5);
-
-    const embed = new EmbedBuilder()
-      .setColor(0x5865f2)
-      .setTitle('🎲 Resultado do Sorteio — Time de 5')
-      .setDescription(
-        sorteados.map((n, i) => `**${i + 1}.** ${n}`).join('\n')
-      )
-      .setFooter({ text: 'Pet do GG • Sorteio' })
-      .setTimestamp();
-
+    const embed = buildSimplesEmbed(pick(lista, quantidade), quantidade);
     await interaction.editReply({ embeds: [embed] });
     return;
   }
