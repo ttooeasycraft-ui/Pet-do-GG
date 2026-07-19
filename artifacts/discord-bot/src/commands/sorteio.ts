@@ -6,9 +6,28 @@ import {
   TextInputStyle,
   ActionRowBuilder,
   EmbedBuilder,
+  GuildMember,
 } from 'discord.js';
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── Configuração de acesso ───────────────────────────────────────────────────
+
+/** Canal exclusivo onde o /sorteio pode ser usado */
+const SORTEIO_CHANNEL_ID = '1524833320658141394';
+
+/** Cargos autorizados a usar o /sorteio */
+const ALLOWED_ROLE_IDS = [
+  '1503440562211127316', // ♛ 𝑺𝒖𝒑𝒓𝒆𝒎𝒂 ♛
+  '1481792319328878713', // 🜲 Thᥱ G᥆ᥲt᥉  🜲
+  '1502148024325898463', // .𖹭.ᐟ 𝑬𝒒𝒖𝒊𝒑𝒆 𝒅𝒆 𝒔𝒖𝒑𝒐𝒓𝒕𝒆 .ᐟ𖹭
+  '1520888304835493888', // ⋆ 𝑪𝒐𝒐𝒓𝒅. 𝒅𝒆 𝑺𝒖𝒑𝒐𝒓𝒕𝒆 ⋆
+];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Verifica se o membro tem ao menos um dos cargos autorizados */
+function hasAllowedRole(member: GuildMember): boolean {
+  return ALLOWED_ROLE_IDS.some((id) => member.roles.cache.has(id));
+}
 
 /** Separa uma lista de nomes/menções por linha ou vírgula e remove vazios */
 function parseList(raw: string): string[] {
@@ -33,11 +52,41 @@ function pick<T>(arr: T[], n: number): T[] {
   return shuffle(arr).slice(0, n);
 }
 
-// ─── comando /sorteio ────────────────────────────────────────────────────────
+// ─── Validação de acesso ─────────────────────────────────────────────────────
+
+async function checkAccess(
+  interaction: ChatInputCommandInteraction
+): Promise<boolean> {
+  // Verifica canal
+  if (interaction.channelId !== SORTEIO_CHANNEL_ID) {
+    await interaction.reply({
+      content: `❌ Este comando só pode ser usado no canal <#${SORTEIO_CHANNEL_ID}>.`,
+      ephemeral: true,
+    });
+    return false;
+  }
+
+  // Verifica cargo
+  const member = interaction.member as GuildMember | null;
+  if (!member || !hasAllowedRole(member)) {
+    await interaction.reply({
+      content: '❌ Você não tem permissão para usar este comando.',
+      ephemeral: true,
+    });
+    return false;
+  }
+
+  return true;
+}
+
+// ─── Comando /sorteio ─────────────────────────────────────────────────────────
 
 export async function handleSorteio(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
+  const allowed = await checkAccess(interaction);
+  if (!allowed) return;
+
   const modo = interaction.options.getString('modo', true);
 
   if (modo === 'funcoes') {
@@ -97,7 +146,7 @@ export async function handleSorteio(
   }
 }
 
-// ─── submit do modal ─────────────────────────────────────────────────────────
+// ─── Submit do modal ──────────────────────────────────────────────────────────
 
 export async function handleSorteioModal(
   interaction: ModalSubmitInteraction
