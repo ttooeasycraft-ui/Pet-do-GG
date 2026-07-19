@@ -1,45 +1,39 @@
-# [Project name]
+# Pet do GG — Discord Bot
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Bot de Discord com boas-vindas automáticas e comando de sorteio de times.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `Pet do GG — Discord Bot` — workflow que mantém o bot online
+- `pnpm --filter @workspace/discord-bot run deploy` — registra os comandos slash no servidor (rodar uma vez após configurar o GUILD_ID)
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- discord.js v14
+- tsx (execução direta de TypeScript)
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/discord-bot/src/index.ts` — entrada principal do bot
+- `artifacts/discord-bot/src/commands/sorteio.ts` — lógica do comando /sorteio
+- `artifacts/discord-bot/src/events/welcome.ts` — lógica das boas-vindas
+- `artifacts/discord-bot/src/deploy.ts` — script para registrar slash commands
 
-## Architecture decisions
+## Secrets obrigatórios
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- `DISCORD_BOT_TOKEN` — token do bot (já configurado)
 
-## Product
+## Variáveis de ambiente obrigatórias
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- `WELCOME_CHANNEL_ID` — ID numérico do canal onde mandar boas-vindas
+- `GUILD_ID` — ID numérico do servidor Discord (para registrar slash commands)
 
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
+Para pegar os IDs: ative o Modo Desenvolvedor no Discord (Configurações > Avançado),
+depois clique com botão direito no servidor/canal e escolha "Copiar ID".
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Após corrigir o GUILD_ID, rodar `pnpm --filter @workspace/discord-bot run deploy` para registrar o comando /sorteio
+- O bot precisa da permissão "Server Members Intent" ativada no Discord Developer Portal (Bot > Privileged Gateway Intents)
+- Para imagem de boas-vindas: adicionar o arquivo em `artifacts/discord-bot/src/assets/` e referenciar em `welcome.ts`

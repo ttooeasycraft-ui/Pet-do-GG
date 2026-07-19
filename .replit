@@ -11,6 +11,26 @@ env = { "CI" = "true" }
 [workflows]
 runButton = "Project"
 
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Pet do GG — Discord Bot"
+
+[[workflows.workflow]]
+name = "Pet do GG — Discord Bot"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/discord-bot run dev"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
@@ -18,3 +38,9 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+WELCOME_CHANNEL_ID = "Ainda não tenho o WELCOME_CHANNEL_ID e o GUILD_ID — a pessoa que vai usar o bot só vai me mandar essas informações amanhã. Pode continuar preparando o resto do bot (estrutura, comandos de sorteio, lógica de boas-vindas) e deixar esses dois valores como pendente por enquanto? Assim que eu receber, eu completo."
+GUILD_ID = "Ainda não tenho o GUILD_ID nem o WELCOME_CHANNEL_ID — vou receber essas informações amanhã de quem vai usar o bot. Pode continuar preparando o resto do código (estrutura do bot, comandos de so"
