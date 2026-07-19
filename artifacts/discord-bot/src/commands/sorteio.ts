@@ -63,13 +63,23 @@ async function checkAccess(
     return false;
   }
 
-  // interaction.member pode ser APIInteractionGuildMember (objeto cru) em vez de
-  // GuildMember (com roles.cache). Buscamos o membro real para garantir o cache.
-  const member =
-    interaction.guild?.members.cache.get(interaction.user.id) ??
-    (await interaction.guild?.members.fetch(interaction.user.id).catch(() => null));
+  // Discord.js v14: interaction.member pode ser GuildMember (roles.cache) ou
+  // APIInteractionGuildMember (roles como string[] de IDs). O payload da interação
+  // SEMPRE inclui os IDs dos cargos — só o formato muda conforme o cache.
+  const rawRoles = interaction.member?.roles;
+  let memberHasRole: boolean;
 
-  if (!member || !hasAllowedRole(member)) {
+  if (Array.isArray(rawRoles)) {
+    // APIInteractionGuildMember: roles já é string[] de IDs — sem necessidade de fetch
+    memberHasRole = ALLOWED_ROLE_IDS.some((id) => rawRoles.includes(id));
+  } else {
+    // GuildMember: roles é GuildMemberRoleManager com .cache
+    memberHasRole = rawRoles
+      ? ALLOWED_ROLE_IDS.some((id) => rawRoles.cache.has(id))
+      : false;
+  }
+
+  if (!memberHasRole) {
     await interaction.reply({
       content: '❌ Você não tem permissão para usar este comando.',
       ephemeral: true,
