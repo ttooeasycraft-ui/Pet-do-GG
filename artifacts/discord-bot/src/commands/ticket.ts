@@ -6,167 +6,92 @@ import {
   CategoryChannel,
   ChannelType,
   ChatInputCommandInteraction,
-  EmbedBuilder,
+  Message,
+  MessageFlags,
   PermissionFlagsBits,
-  StringSelectMenuBuilder,
   StringSelectMenuInteraction,
   TextChannel,
 } from 'discord.js';
 
-// ─── Configuração ─────────────────────────────────────────────────────────────
+import { STAFF_ROLE_IDS, TICKET_PANEL_CHANNEL_ID } from '../constants.js';
+import { getConfig, setTicketPanelMessage } from '../config.js';
+import { buildPanelEmbed, buildPanelMenu } from './editar.js';
 
-/** Canal onde o painel de tickets fica fixo */
-const PANEL_CHANNEL_ID = '1505935902759977000';
-
-/**
- * Cargos que podem ver e responder qualquer ticket.
- * Mesmos cargos de staff já usados no /sorteio.
- */
-const STAFF_ROLE_IDS = [
-  '1503440562211127316', // ♛ 𝑺𝒖𝒑𝒓𝒆𝒎𝒂 ♛
-  '1481792319328878713', // 🜲 Thᥱ G᥆ᥲt᥉ 🜲
-  '1502148024325898463', // .𖹭. 𝑬𝒒𝒖𝒊𝒑𝒆 𝒅𝒆 𝒔𝒖𝒑𝒐𝒓𝒕𝒆
-  '1520888304835493888', // ⋆ 𝑪𝒐𝒐𝒓𝒅. 𝒅𝒆 𝑺𝒖𝒑𝒐𝒓𝒕𝒆 ⋆
-];
-
-/**
- * URL do GIF de cocô fofo com careta triste.
- * Troque por qualquer URL de imagem/GIF direto se quiser personalizar.
- */
-const POOP_GIF_URL =
-  'https://media.tenor.com/LCBfnMGLV6UAAAAC/sad-poop-emoji.gif';
+// ─── Tipos de ticket ──────────────────────────────────────────────────────────
 
 const TICKET_TYPES = {
-  ticket_suporte: {
-    label: 'Suporte',
-    emoji: '🛠️',
-    color: 0x5865F2,        // blurple Discord
-    description: 'suporte técnico ou ajuda geral',
-  },
-  ticket_duvidas: {
-    label: 'Dúvidas',
-    emoji: '❓',
-    color: 0xFEE75C,        // amarelo
-    description: 'esclarecer dúvidas',
-  },
-  ticket_parcerias: {
-    label: 'Parcerias',
-    emoji: '🤝',
-    color: 0x57F287,        // verde
-    description: 'proposta de parceria',
-  },
+  ticket_suporte:   { label: 'Suporte',   emoji: '🛠️', color: 0x5865F2, description: 'suporte técnico ou ajuda geral' },
+  ticket_duvidas:   { label: 'Dúvidas',   emoji: '❓',  color: 0xFEE75C, description: 'esclarecer dúvidas' },
+  ticket_parcerias: { label: 'Parcerias', emoji: '🤝',  color: 0x57F287, description: 'proposta de parceria' },
 } as const;
 
 type TicketTypeKey = keyof typeof TICKET_TYPES;
 
-// ─── Painel ───────────────────────────────────────────────────────────────────
-
-/** Monta o embed + select menu do painel e envia no canal de tickets. */
-async function sendPanel(channel: TextChannel): Promise<void> {
-  const embed = new EmbedBuilder()
-    .setTitle('Suporte')
-    .setDescription(
-      '💬 **Fale com a gente!**\n' +
-      'Se você está com alguma dúvida, precisa de ajuda ou quer conversar sobre uma possível parceria, estamos aqui pra você! 🤝✨\n\n' +
-      '📩 Abra um ticket e explique direitinho o que você precisa — nossa equipe vai te responder o mais rápido possível e te dar todo o suporte necessário. 🚀\n\n' +
-      '🛠️ Seja suporte técnico, dúvidas gerais ou propostas de parceria, pode contar com a gente! Não tenha vergonha de chamar, estamos sempre prontos pra ajudar. 💙'
-    )
-    .setColor(0x5865F2)
-    .setImage(POOP_GIF_URL)
-    .setFooter({ text: '🐾 Pet do GG • Sistema de Tickets' });
-
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId('ticket_select')
-    .setPlaceholder('Selecione uma opção')
-    .addOptions([
-      {
-        label: 'Suporte',
-        description: 'Abrir um ticket de suporte',
-        value: 'ticket_suporte',
-        emoji: '🛠️',
-      },
-      {
-        label: 'Dúvidas',
-        description: 'Abrir um ticket de dúvidas',
-        value: 'ticket_duvidas',
-        emoji: '❓',
-      },
-      {
-        label: 'Parcerias',
-        description: 'Abrir um ticket de parcerias',
-        value: 'ticket_parcerias',
-        emoji: '🤝',
-      },
-    ]);
-
-  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);
-
-  await channel.send({ embeds: [embed], components: [row] });
-}
-
 // ─── Handlers exportados ──────────────────────────────────────────────────────
 
 /**
- * `/ticket-painel` — envia (ou reenvia) o painel de tickets.
- * Só deve ser usado por quem tem permissão de administrador.
+ * `/ticket-painel` — envia (ou reenvia) o painel no canal configurado.
+ * Só administradores podem usar. Salva o ID da mensagem para edições futuras.
  */
 export async function handleTicketSetup(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
-  if (
-    !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)
-  ) {
+  if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
     await interaction.reply({
       content: '❌ Apenas administradores podem usar este comando.',
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
   const panelChannel = await interaction.guild!.channels
-    .fetch(PANEL_CHANNEL_ID)
+    .fetch(TICKET_PANEL_CHANNEL_ID)
     .catch(() => null);
 
-  if (!panelChannel || !panelChannel.isTextBased()) {
+  if (!panelChannel?.isTextBased()) {
     await interaction.reply({
-      content: `❌ Canal de tickets (<#${PANEL_CHANNEL_ID}>) não encontrado ou inacessível.`,
-      ephemeral: true,
+      content: `❌ Canal de tickets (<#${TICKET_PANEL_CHANNEL_ID}>) não encontrado ou inacessível.`,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await sendPanel(panelChannel as TextChannel);
+  const config = getConfig();
+  const msg    = await sendPanel(panelChannel as TextChannel, config.ticket.panelText, config.ticket.panelImageUrl);
+
+  // Salva o ID para que /editar-texto possa editar essa mensagem ao vivo
+  setTicketPanelMessage(msg.id, TICKET_PANEL_CHANNEL_ID);
+
   await interaction.reply({
-    content: `✅ Painel de tickets enviado em <#${PANEL_CHANNEL_ID}>!`,
-    ephemeral: true,
+    content: `✅ Painel de tickets enviado em <#${TICKET_PANEL_CHANNEL_ID}>!`,
+    flags: MessageFlags.Ephemeral,
   });
 }
 
 /**
  * Disparado quando o usuário escolhe uma opção no select menu do painel.
- * Cria um canal privado de ticket para o usuário.
+ * Cria um canal privado de ticket.
  */
 export async function handleTicketSelect(
   interaction: StringSelectMenuInteraction
 ): Promise<void> {
-  const typeKey = interaction.values[0] as TicketTypeKey;
+  const typeKey  = interaction.values[0] as TicketTypeKey;
   const typeInfo = TICKET_TYPES[typeKey];
 
   if (!typeInfo) {
-    await interaction.reply({ content: '❌ Opção inválida.', ephemeral: true });
+    await interaction.reply({ content: '❌ Opção inválida.', flags: MessageFlags.Ephemeral });
     return;
   }
 
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const guild = interaction.guild!;
   const user  = interaction.user;
 
-  // Impede duplicata: verifica se já existe um canal de ticket aberto para este usuário
-  const existing = guild.channels.cache.find(
-    (ch) =>
-      ch.isTextBased() &&
-      ch.name === slugName(typeInfo.label, user.username)
+  // Verifica duplicata pelo nome do canal
+  const channelName = slugName(typeInfo.label, user.username);
+  const existing    = guild.channels.cache.find(
+    (ch) => ch.isTextBased() && ch.name === channelName
   );
   if (existing) {
     await interaction.editReply({
@@ -175,7 +100,7 @@ export async function handleTicketSelect(
     return;
   }
 
-  // Tenta encontrar uma categoria chamada "Tickets" para organizar os canais
+  // Tenta encaixar numa categoria "ticket" existente
   const category = guild.channels.cache.find(
     (ch): ch is CategoryChannel =>
       ch.type === ChannelType.GuildCategory &&
@@ -184,17 +109,12 @@ export async function handleTicketSelect(
 
   // Cria o canal privado
   const ticketChannel = await guild.channels.create({
-    name: slugName(typeInfo.label, user.username),
+    name: channelName,
     type: ChannelType.GuildText,
     parent: category?.id ?? null,
-    topic: `Ticket de ${typeInfo.label} aberto por ${user.tag}`,
+    topic: `Ticket de ${typeInfo.label} aberto por ${user.username}`,
     permissionOverwrites: [
-      // @everyone: sem acesso
-      {
-        id: guild.roles.everyone,
-        deny: [PermissionFlagsBits.ViewChannel],
-      },
-      // Quem abriu: pode ver e escrever
+      { id: guild.roles.everyone,  deny: [PermissionFlagsBits.ViewChannel] },
       {
         id: user.id,
         allow: [
@@ -204,7 +124,6 @@ export async function handleTicketSelect(
           PermissionFlagsBits.AttachFiles,
         ],
       },
-      // Cargos de staff: acesso total ao ticket
       ...STAFF_ROLE_IDS.map((roleId) => ({
         id: roleId,
         allow: [
@@ -218,7 +137,8 @@ export async function handleTicketSelect(
     ],
   });
 
-  // Embed inicial dentro do ticket
+  // Embed inicial dentro do canal de ticket
+  const { EmbedBuilder } = await import('discord.js');
   const openEmbed = new EmbedBuilder()
     .setTitle(`${typeInfo.emoji} Ticket de ${typeInfo.label}`)
     .setDescription(
@@ -228,7 +148,9 @@ export async function handleTicketSelect(
       `> Use o botão abaixo para **fechar o ticket** quando tudo estiver resolvido.`
     )
     .setColor(typeInfo.color)
-    .setFooter({ text: `🐾 Pet do GG • ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` });
+    .setFooter({
+      text: `🐾 Pet do GG • ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
+    });
 
   const closeBtn = new ButtonBuilder()
     .setCustomId('ticket_close')
@@ -239,7 +161,7 @@ export async function handleTicketSelect(
 
   await ticketChannel.send({
     content: `<@${user.id}> ${STAFF_ROLE_IDS.map((id) => `<@&${id}>`).join(' ')}`,
-    embeds: [openEmbed],
+    embeds:  [openEmbed],
     components: [btnRow],
   });
 
@@ -247,40 +169,49 @@ export async function handleTicketSelect(
     content: `✅ Ticket criado com sucesso! <#${ticketChannel.id}>`,
   });
 
-  console.log(`[Ticket] Aberto por ${user.tag} — tipo: ${typeInfo.label} — canal: ${ticketChannel.id}`);
+  console.log(`[Ticket] Aberto por ${user.username} — tipo: ${typeInfo.label} — canal: ${ticketChannel.id}`);
 }
 
 /**
  * Disparado quando alguém clica em "🔒 Fechar Ticket".
- * Qualquer pessoa que veja o canal pode fechar (usuário ou staff).
  */
 export async function handleTicketClose(
   interaction: ButtonInteraction
 ): Promise<void> {
   const channel = interaction.channel as TextChannel;
 
+  const { EmbedBuilder } = await import('discord.js');
   const confirmEmbed = new EmbedBuilder()
-    .setDescription(`🔒 Ticket fechado por <@${interaction.user.id}>.\nO canal será excluído em **5 segundos**.`)
-    .setColor(0xED4245); // vermelho Discord
+    .setDescription(
+      `🔒 Ticket fechado por <@${interaction.user.id}>.\nO canal será excluído em **5 segundos**.`
+    )
+    .setColor(0xED4245);
 
   await interaction.reply({ embeds: [confirmEmbed] });
 
   setTimeout(async () => {
-    await channel.delete(`Ticket fechado por ${interaction.user.tag}`).catch(() => null);
+    await channel.delete(`Ticket fechado por ${interaction.user.username}`).catch(() => null);
   }, 5_000);
 
-  console.log(`[Ticket] Fechado por ${interaction.user.tag} — canal: ${channel.id}`);
+  console.log(`[Ticket] Fechado por ${interaction.user.username} — canal: ${channel.id}`);
 }
 
-// ─── Utilitário ───────────────────────────────────────────────────────────────
+// ─── Interno ──────────────────────────────────────────────────────────────────
 
-/** Gera o nome do canal: ticket-suporte-username (só letras/números/hífen, max 100 chars) */
+/** Envia o painel e retorna a mensagem criada (para salvar o ID) */
+async function sendPanel(channel: TextChannel, text: string, imageUrl: string): Promise<Message> {
+  const embed = buildPanelEmbed(text, imageUrl);
+  const row   = buildPanelMenu();
+  return channel.send({ embeds: [embed], components: [row] });
+}
+
+/** Nome do canal: ticket-suporte-username (ASCII, max 100 chars) */
 function slugName(label: string, username: string): string {
   const clean = (s: string) =>
     s
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // remove acentos
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]/g, '-')
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');

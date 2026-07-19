@@ -4,7 +4,7 @@
  */
 import { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
 
-const token  = process.env.DISCORD_BOT_TOKEN;
+const token   = process.env.DISCORD_BOT_TOKEN;
 const guildId = process.env.GUILD_ID;
 
 if (!token) {
@@ -31,7 +31,7 @@ const commands = [
         .setRequired(true)
         .addChoices(
           { name: '🛡️⚔️❤️ Por Função (1 Tank · 2 Dano · 2 Suporte)', value: 'funcoes' },
-          { name: '🎲 Simples — N aleatórios de uma lista', value: 'simples' }
+          { name: '🎲 Simples — N aleatórios de uma lista',            value: 'simples' }
         )
     )
     .addIntegerOption((opt) =>
@@ -48,6 +48,21 @@ const commands = [
     .setName('ticket-painel')
     .setDescription('Envia o painel de tickets no canal configurado (apenas administradores)')
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+
+  // ── /editar-texto ─────────────────────────────────────────────────────────
+  new SlashCommandBuilder()
+    .setName('editar-texto')
+    .setDescription('Edita os textos informativos do bot sem mexer no código (apenas staff)')
+    .addStringOption((opt) =>
+      opt
+        .setName('seção')
+        .setDescription('Qual texto você quer editar?')
+        .setRequired(true)
+        .addChoices(
+          { name: '🎉 Boas-vindas — texto e imagem do embed de entrada',        value: 'boas-vindas'    },
+          { name: '🎟️ Painel de Suporte — texto e imagem do painel de tickets', value: 'painel-suporte' }
+        )
+    ),
 
 ].map((cmd) => cmd.toJSON());
 
