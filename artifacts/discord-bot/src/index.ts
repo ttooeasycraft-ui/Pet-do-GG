@@ -98,6 +98,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (interaction.isButton()) {
       if (interaction.customId === 'ticket_close') {
         await handleTicketClose(interaction);
+      } else if (interaction.customId === 'feedback_sim') {
+        await interaction.reply({ content: 'Que bom! Fico feliz que aprovaram. 🐾', flags: 64 });
+      } else if (interaction.customId === 'feedback_nao') {
+        await interaction.reply({ content: 'Obrigado pelo feedback! Vamos melhorar. 🐾', flags: 64 });
       }
       return;
     }
