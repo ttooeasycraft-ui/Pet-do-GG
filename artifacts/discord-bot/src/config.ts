@@ -36,7 +36,7 @@ export interface BotConfig {
 
 export const DEFAULTS: BotConfig = {
   welcome: {
-    text: 'Olá player novo!! Muito bom ter mais um Noob- ops, jogador conosco ✨❤️\n\n{membro} acabou de entrar!',
+    text: 'Olá player novo!! Muito bom ter mais um Noob- ops, jogador conosco ✨❤️\n\n{membro} acabou de entrar!\nVocê é o nosso **{contagem}º** membro! 🐾',
     imageUrl: '', // vazio = usa banner local (assets/banner-boas-vindas.png)
   },
   ticket: {
