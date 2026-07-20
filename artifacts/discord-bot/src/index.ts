@@ -43,6 +43,9 @@ if (!isValidSnowflake(guildId)) {
 // ── Carrega configuração persistida ──────────────────────────────────────────
 loadConfig();
 
+// ── Contagem de votos em memória (por mensagem) ───────────────────────────────
+const voteData = new Map<string, { sim: number; nao: number; voters: Set<string> }>();
+
 // ── Cliente Discord ───────────────────────────────────────────────────────────
 const client = new Client({
   intents: [
@@ -98,10 +101,33 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     if (interaction.isButton()) {
       if (interaction.customId === 'ticket_close') {
         await handleTicketClose(interaction);
-      } else if (interaction.customId === 'feedback_sim') {
-        await interaction.reply({ content: 'Que bom! Fico feliz que aprovaram. 🐾', flags: 64 });
-      } else if (interaction.customId === 'feedback_nao') {
-        await interaction.reply({ content: 'Obrigado pelo feedback! Vamos melhorar. 🐾', flags: 64 });
+      } else if (interaction.customId === 'feedback_sim' || interaction.customId === 'feedback_nao') {
+        const msgId  = interaction.message.id;
+        const userId = interaction.user.id;
+        const isSim  = interaction.customId === 'feedback_sim';
+
+        // Inicializa contadores para esta mensagem
+        if (!voteData.has(msgId)) voteData.set(msgId, { sim: 0, nao: 0, voters: new Set() });
+        const data = voteData.get(msgId)!;
+
+        if (data.voters.has(userId)) {
+          await interaction.reply({ content: 'Você já votou!', flags: 64 });
+          return;
+        }
+
+        data.voters.add(userId);
+        if (isSim) data.sim++; else data.nao++;
+
+        // Edita a mensagem com os botões atualizados
+        await interaction.update({
+          components: [{
+            type: 1,
+            components: [
+              { type: 2, custom_id: 'feedback_sim', label: `Sim  ·  ${data.sim}`, style: 3 },
+              { type: 2, custom_id: 'feedback_nao', label: `Não  ·  ${data.nao}`, style: 4 },
+            ],
+          }],
+        });
       }
       return;
     }
