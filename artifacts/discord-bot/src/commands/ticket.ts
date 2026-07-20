@@ -6,6 +6,7 @@ import {
   CategoryChannel,
   ChannelType,
   ChatInputCommandInteraction,
+  EmbedBuilder,
   Message,
   MessageFlags,
   PermissionFlagsBits,
@@ -20,9 +21,9 @@ import { buildPanelEmbed, buildPanelMenu } from './editar.js';
 // ─── Tipos de ticket ──────────────────────────────────────────────────────────
 
 const TICKET_TYPES = {
-  ticket_suporte:   { label: 'Suporte',   emoji: '🛠️', color: 0x5865F2, description: 'suporte técnico ou ajuda geral' },
-  ticket_duvidas:   { label: 'Dúvidas',   emoji: '❓',  color: 0xFEE75C, description: 'esclarecer dúvidas' },
-  ticket_parcerias: { label: 'Parcerias', emoji: '🤝',  color: 0x57F287, description: 'proposta de parceria' },
+  ticket_suporte:   { label: 'Suporte',   color: 0x5865F2, description: 'suporte técnico ou ajuda geral' },
+  ticket_duvidas:   { label: 'Dúvidas',   color: 0x5865F2, description: 'esclarecer dúvidas' },
+  ticket_parcerias: { label: 'Parcerias', color: 0x5865F2, description: 'proposta de parceria' },
 } as const;
 
 type TicketTypeKey = keyof typeof TICKET_TYPES;
@@ -38,7 +39,7 @@ export async function handleTicketSetup(
 ): Promise<void> {
   if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
     await interaction.reply({
-      content: '❌ Apenas administradores podem usar este comando.',
+      content: 'Apenas administradores podem usar este comando.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -50,7 +51,7 @@ export async function handleTicketSetup(
 
   if (!panelChannel?.isTextBased()) {
     await interaction.reply({
-      content: `❌ Canal de tickets (<#${TICKET_PANEL_CHANNEL_ID}>) não encontrado ou inacessível.`,
+      content: `Canal de tickets (<#${TICKET_PANEL_CHANNEL_ID}>) não encontrado ou inacessível.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -59,11 +60,10 @@ export async function handleTicketSetup(
   const config = getConfig();
   const msg    = await sendPanel(panelChannel as TextChannel, config.ticket.panelText, config.ticket.panelImageUrl);
 
-  // Salva o ID para que /editar-texto possa editar essa mensagem ao vivo
   setTicketPanelMessage(msg.id, TICKET_PANEL_CHANNEL_ID);
 
   await interaction.reply({
-    content: `✅ Painel de tickets enviado em <#${TICKET_PANEL_CHANNEL_ID}>!`,
+    content: `Painel enviado em <#${TICKET_PANEL_CHANNEL_ID}>.`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -79,7 +79,7 @@ export async function handleTicketSelect(
   const typeInfo = TICKET_TYPES[typeKey];
 
   if (!typeInfo) {
-    await interaction.reply({ content: '❌ Opção inválida.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Opção inválida.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -95,7 +95,7 @@ export async function handleTicketSelect(
   );
   if (existing) {
     await interaction.editReply({
-      content: `❌ Você já tem um ticket de ${typeInfo.label} aberto! <#${existing.id}>`,
+      content: `Você já tem um ticket de ${typeInfo.label} aberto: <#${existing.id}>`,
     });
     return;
   }
@@ -112,7 +112,7 @@ export async function handleTicketSelect(
     name: channelName,
     type: ChannelType.GuildText,
     parent: category?.id ?? null,
-    topic: `Ticket de ${typeInfo.label} aberto por ${user.username}`,
+    topic: `Ticket de ${typeInfo.label} — ${user.username}`,
     permissionOverwrites: [
       { id: guild.roles.everyone,  deny: [PermissionFlagsBits.ViewChannel] },
       {
@@ -137,24 +137,20 @@ export async function handleTicketSelect(
     ],
   });
 
-  // Embed inicial dentro do canal de ticket
-  const { EmbedBuilder } = await import('discord.js');
   const openEmbed = new EmbedBuilder()
-    .setTitle(`${typeInfo.emoji} Ticket de ${typeInfo.label}`)
+    .setTitle(`Ticket — ${typeInfo.label}`)
     .setDescription(
-      `Olá, <@${user.id}>! 👋\n\n` +
-      `Obrigado por abrir um ticket de **${typeInfo.description}**.\n` +
-      `Nossa equipe irá te atender em breve — pode descrever sua situação aqui! 💙\n\n` +
-      `> Use o botão abaixo para **fechar o ticket** quando tudo estiver resolvido.`
+      `Olá, <@${user.id}>!\n\n` +
+      `Você abriu um ticket de **${typeInfo.description}**.\n` +
+      `Nossa equipe vai te atender em breve. Pode descrever sua situação aqui.\n\n` +
+      `Use o botão abaixo para fechar o ticket quando tudo estiver resolvido.`
     )
     .setColor(typeInfo.color)
-    .setFooter({
-      text: `🐾 Pet do GG • ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`,
-    });
+    .setFooter({ text: `Pet do GG · ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}` });
 
   const closeBtn = new ButtonBuilder()
     .setCustomId('ticket_close')
-    .setLabel('🔒 Fechar Ticket')
+    .setLabel('Fechar Ticket')
     .setStyle(ButtonStyle.Danger);
 
   const btnRow = new ActionRowBuilder<ButtonBuilder>().addComponents(closeBtn);
@@ -166,25 +162,22 @@ export async function handleTicketSelect(
   });
 
   await interaction.editReply({
-    content: `✅ Ticket criado com sucesso! <#${ticketChannel.id}>`,
+    content: `Ticket criado! <#${ticketChannel.id}>`,
   });
 
   console.log(`[Ticket] Aberto por ${user.username} — tipo: ${typeInfo.label} — canal: ${ticketChannel.id}`);
 }
 
 /**
- * Disparado quando alguém clica em "🔒 Fechar Ticket".
+ * Disparado quando alguém clica em "Fechar Ticket".
  */
 export async function handleTicketClose(
   interaction: ButtonInteraction
 ): Promise<void> {
   const channel = interaction.channel as TextChannel;
 
-  const { EmbedBuilder } = await import('discord.js');
   const confirmEmbed = new EmbedBuilder()
-    .setDescription(
-      `🔒 Ticket fechado por <@${interaction.user.id}>.\nO canal será excluído em **5 segundos**.`
-    )
+    .setDescription(`Ticket fechado por <@${interaction.user.id}>.\nO canal será excluído em **5 segundos**.`)
     .setColor(0xED4245);
 
   await interaction.reply({ embeds: [confirmEmbed] });

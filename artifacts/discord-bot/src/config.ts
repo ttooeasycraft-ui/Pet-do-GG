@@ -16,7 +16,10 @@ export interface BotConfig {
   welcome: {
     /** Texto da descrição do embed. Suporta {membro}, {servidor}, {contagem} */
     text: string;
-    /** URL opcional de imagem/banner exibida no embed de boas-vindas */
+    /**
+     * URL externa de imagem/banner OU vazio para usar o banner local
+     * (assets/banner-boas-vindas.png, se existir).
+     */
     imageUrl: string;
   };
   ticket: {
@@ -33,19 +36,14 @@ export interface BotConfig {
 
 export const DEFAULTS: BotConfig = {
   welcome: {
-    text:
-      'Bem-vindo(a), {membro}!\n' +
-      'Você acabou de chegar em **{servidor}**.\n\n' +
-      'Você é o nosso **{contagem}º** membro! 🐾',
-    imageUrl: '',
+    text: 'Olá player novo!! Muito bom ter mais um Noob- ops, jogador conosco ✨❤️\n\n{membro} acabou de entrar!',
+    imageUrl: '', // vazio = usa banner local (assets/banner-boas-vindas.png)
   },
   ticket: {
     panelText:
-      '💬 **Fale com a gente!**\n' +
-      'Se você está com alguma dúvida, precisa de ajuda ou quer conversar sobre uma possível parceria, estamos aqui pra você! 🤝✨\n\n' +
-      '📩 Abra um ticket e explique direitinho o que você precisa — nossa equipe vai te responder o mais rápido possível e te dar todo o suporte necessário. 🚀\n\n' +
-      '🛠️ Seja suporte técnico, dúvidas gerais ou propostas de parceria, pode contar com a gente! Não tenha vergonha de chamar, estamos sempre prontos pra ajudar. 💙',
-    panelImageUrl: 'https://media.tenor.com/LCBfnMGLV6UAAAAC/sad-poop-emoji.gif',
+      'Fale com a gente!\n\n' +
+      'Tem alguma dúvida, precisa de ajuda ou quer propor uma parceria? Abra um ticket abaixo e nossa equipe te responde em breve.',
+    panelImageUrl: '',
     panelMessageId: '',
     panelChannelId: '',
   },

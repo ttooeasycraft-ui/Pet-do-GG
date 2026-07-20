@@ -11,9 +11,7 @@ import {
 
 import { SORTEIO_CHANNEL_ID, interactionHasStaffRole } from '../constants.js';
 
-// Cores temáticas Overwatch
-const OW_ORANGE = 0xF99E1A; // dourado/laranja do logo
-const OW_BLUE   = 0x00B4F0; // azul claro Overwatch
+const BRAND_COLOR = 0x5865F2;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -44,7 +42,7 @@ async function checkAccess(
 ): Promise<boolean> {
   if (interaction.channelId !== SORTEIO_CHANNEL_ID) {
     await interaction.reply({
-      content: `❌ Este comando só pode ser usado em <#${SORTEIO_CHANNEL_ID}>.`,
+      content: `Este comando só pode ser usado em <#${SORTEIO_CHANNEL_ID}>.`,
       flags: MessageFlags.Ephemeral,
     });
     return false;
@@ -52,7 +50,7 @@ async function checkAccess(
 
   if (!interactionHasStaffRole(interaction.member as Parameters<typeof interactionHasStaffRole>[0])) {
     await interaction.reply({
-      content: '❌ Você não tem permissão para usar este comando.',
+      content: 'Você não tem permissão para usar este comando.',
       flags: MessageFlags.Ephemeral,
     });
     return false;
@@ -61,62 +59,51 @@ async function checkAccess(
   return true;
 }
 
-// ─── Embed de resultado: Por Função ──────────────────────────────────────────
+// ─── Embed: Por Função ────────────────────────────────────────────────────────
 
 function buildFuncoesEmbed(
   tank: string[],
   dano: string[],
   suporte: string[]
 ): EmbedBuilder {
-  const sep = '\u200B'; // zero-width space para espaçamento visual
-
   return new EmbedBuilder()
-    .setColor(OW_ORANGE)
-    .setTitle('⚡ SORTEIO OVERWATCH ⚡')
-    .setDescription(
-      '> Os heróis foram escolhidos. Boa sorte no campo de batalha!\n' + sep
-    )
+    .setColor(BRAND_COLOR)
+    .setTitle('Sorteio Overwatch — Por Função')
     .addFields(
       {
-        name: '🛡️  __Tanque__',
-        value: tank.map((n) => `╠ **${n}**`).join('\n') + '\n' + sep,
+        name: '🛡️ Tank',
+        value: tank.map((n) => `**${n}**`).join('\n'),
         inline: false,
       },
       {
-        name: '⚔️  __Dano__',
-        value: dano.map((n) => `╠ **${n}**`).join('\n') + '\n' + sep,
+        name: '⚔️ Dano',
+        value: dano.map((n) => `**${n}**`).join('\n'),
         inline: false,
       },
       {
-        name: '❤️  __Suporte__',
-        value: suporte.map((n) => `╠ **${n}**`).join('\n') + '\n' + sep,
+        name: '❤️ Suporte',
+        value: suporte.map((n) => `**${n}**`).join('\n'),
         inline: false,
       },
     )
-    .setThumbnail('https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Overwatch_circle_logo.svg/240px-Overwatch_circle_logo.svg.png')
-    .setFooter({ text: '🐾 Pet do GG  •  Sorteio Overwatch' })
+    .setFooter({ text: 'Pet do GG · Sorteio Overwatch' })
     .setTimestamp();
 }
 
-// ─── Embed de resultado: Simples ─────────────────────────────────────────────
+// ─── Embed: Simples ───────────────────────────────────────────────────────────
 
 function buildSimplesEmbed(sorteados: string[], quantidade: number): EmbedBuilder {
-  const sep      = '\u200B';
   const numbered = sorteados.map((n, i) => `\`${i + 1}.\` **${n}**`).join('\n');
 
   return new EmbedBuilder()
-    .setColor(OW_BLUE)
-    .setTitle(`⚡ SORTEIO ${quantidade}v${quantidade} ⚡`)
-    .setDescription(
-      `> O destino escolheu os ${quantidade} heróis desta partida!\n${sep}`
-    )
+    .setColor(BRAND_COLOR)
+    .setTitle(`Sorteio — ${quantidade} jogador${quantidade !== 1 ? 'es' : ''}`)
     .addFields({
-      name: '🎮  __Jogadores sorteados__',
-      value: numbered + '\n' + sep,
+      name: 'Jogadores sorteados',
+      value: numbered,
       inline: false,
     })
-    .setThumbnail('https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Overwatch_circle_logo.svg/240px-Overwatch_circle_logo.svg.png')
-    .setFooter({ text: '🐾 Pet do GG  •  Sorteio Overwatch' })
+    .setFooter({ text: 'Pet do GG · Sorteio Overwatch' })
     .setTimestamp();
 }
 
@@ -133,13 +120,13 @@ export async function handleSorteio(
   if (modo === 'funcoes') {
     const modal = new ModalBuilder()
       .setCustomId('sorteio_funcoes')
-      .setTitle('⚡ Sorteio Overwatch — Por Função');
+      .setTitle('Sorteio Overwatch — Por Função');
 
     modal.addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('tanque')
-          .setLabel('🛡️ Tanques (um por linha ou vírgula)')
+          .setLabel('Tanques (um por linha ou vírgula)')
           .setStyle(TextInputStyle.Paragraph)
           .setPlaceholder('Nome1\nNome2\nNome3')
           .setRequired(true)
@@ -147,7 +134,7 @@ export async function handleSorteio(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('dano')
-          .setLabel('⚔️ Dano (um por linha ou vírgula)')
+          .setLabel('Dano (um por linha ou vírgula)')
           .setStyle(TextInputStyle.Paragraph)
           .setPlaceholder('Nome1\nNome2\nNome3')
           .setRequired(true)
@@ -155,7 +142,7 @@ export async function handleSorteio(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('suporte')
-          .setLabel('❤️ Suporte (um por linha ou vírgula)')
+          .setLabel('Suporte (um por linha ou vírgula)')
           .setStyle(TextInputStyle.Paragraph)
           .setPlaceholder('Nome1\nNome2')
           .setRequired(true)
@@ -167,17 +154,20 @@ export async function handleSorteio(
   }
 
   if (modo === 'simples') {
-    const quantidade = interaction.options.getInteger('quantidade') ?? 5;
+    const quantidade = Math.min(
+      Math.max(interaction.options.getInteger('quantidade') ?? 5, 1),
+      100
+    );
 
     const modal = new ModalBuilder()
       .setCustomId(`sorteio_simples_${quantidade}`)
-      .setTitle(`⚡ Sorteio ${quantidade}v${quantidade} — Lista de Jogadores`);
+      .setTitle(`Sorteio — ${quantidade} jogador${quantidade !== 1 ? 'es' : ''}`);
 
     modal.addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('lista')
-          .setLabel(`📋 Jogadores (sorteia ${quantidade} — um por linha/vírgula)`)
+          .setLabel(`Lista de jogadores (sorteia ${quantidade})`)
           .setStyle(TextInputStyle.Paragraph)
           .setPlaceholder('Nome1\nNome2\nNome3\n...')
           .setRequired(true)
@@ -203,13 +193,13 @@ export async function handleSorteioModal(
     const suportes = parseList(interaction.fields.getTextInputValue('suporte'));
 
     const erros: string[] = [];
-    if (tanques.length  < 1) erros.push('**Tanque** precisa de ao menos **1** jogador.');
-    if (danos.length    < 2) erros.push('**Dano** precisa de ao menos **2** jogadores.');
-    if (suportes.length < 2) erros.push('**Suporte** precisa de ao menos **2** jogadores.');
+    if (tanques.length  < 1) erros.push('**Tank** precisa de ao menos 1 jogador.');
+    if (danos.length    < 2) erros.push('**Dano** precisa de ao menos 2 jogadores.');
+    if (suportes.length < 2) erros.push('**Suporte** precisa de ao menos 2 jogadores.');
 
     if (erros.length > 0) {
       await interaction.editReply({
-        content: `❌ Não foi possível sortear:\n${erros.map((e) => `• ${e}`).join('\n')}`,
+        content: `Não foi possível sortear:\n${erros.map((e) => `• ${e}`).join('\n')}`,
       });
       return;
     }
@@ -225,13 +215,14 @@ export async function handleSorteioModal(
 
   // ── Simples ───────────────────────────────────────────────────────────────
   if (interaction.customId.startsWith('sorteio_simples_')) {
-    const quantidade = parseInt(interaction.customId.split('_')[2] ?? '5', 10);
+    const rawQtd = interaction.customId.replace('sorteio_simples_', '');
+    const quantidade = parseInt(rawQtd, 10) || 5;
     const lista = parseList(interaction.fields.getTextInputValue('lista'));
 
     if (lista.length < quantidade) {
       await interaction.editReply({
         content:
-          `❌ A lista precisa ter ao menos **${quantidade} jogadores** para este sorteio. ` +
+          `A lista precisa ter ao menos **${quantidade} jogador${quantidade !== 1 ? 'es' : ''}** para este sorteio. ` +
           `Você enviou ${lista.length}.`,
       });
       return;

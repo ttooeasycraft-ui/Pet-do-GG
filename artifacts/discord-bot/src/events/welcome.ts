@@ -2,8 +2,13 @@ import {
   GuildMember,
   EmbedBuilder,
   TextChannel,
+  AttachmentBuilder,
 } from 'discord.js';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { getConfig } from '../config.js';
+
+const LOCAL_BANNER = join(process.cwd(), 'assets', 'banner-boas-vindas.png');
 
 export async function handleWelcome(member: GuildMember): Promise<void> {
   const channelId = process.env.WELCOME_CHANNEL_ID;
@@ -33,29 +38,38 @@ export async function handleWelcome(member: GuildMember): Promise<void> {
 
   // Substitui os placeholders no texto configurável
   const description = config.welcome.text
-    .replace(/\{membro\}/g,    `${member}`)
-    .replace(/\{servidor\}/g,  guildName)
-    .replace(/\{contagem\}/g,  String(memberCount));
+    .replace(/\{membro\}/g,   `${member}`)
+    .replace(/\{servidor\}/g, guildName)
+    .replace(/\{contagem\}/g, String(memberCount));
+
+  // Decide a imagem: URL externa configurada > banner local > nenhuma
+  const externalUrl = config.welcome.imageUrl.trim();
+  const useLocalBanner = !externalUrl && existsSync(LOCAL_BANNER);
 
   const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
+    .setColor(0x5865F2)
     .setAuthor({
       name:    `${member.user.username} acabou de chegar!`,
       iconURL: avatarUrl,
     })
-    .setTitle('🎉 Você spawnou no lugar certo!')
     .setDescription(description)
     .setThumbnail(avatarUrl)
-    .setFooter({ text: `${guildName} • Pet do GG` })
+    .setFooter({ text: `${guildName} · Pet do GG` })
     .setTimestamp();
 
-  // Imagem/banner configurável — exibida abaixo do texto do embed
-  if (config.welcome.imageUrl) {
-    embed.setImage(config.welcome.imageUrl);
+  if (externalUrl) {
+    embed.setImage(externalUrl);
+  } else if (useLocalBanner) {
+    embed.setImage('attachment://banner-boas-vindas.png');
   }
 
+  const files: AttachmentBuilder[] = useLocalBanner
+    ? [new AttachmentBuilder(LOCAL_BANNER, { name: 'banner-boas-vindas.png' })]
+    : [];
+
   await channel.send({
-    content: `Boas-vindas à **${guildName}**, ${member}!`,
+    content: `Bem-vindo(a) ao **${guildName}**, ${member}!`,
     embeds:  [embed],
+    files,
   });
 }

@@ -3,7 +3,7 @@
  * diretamente pelo Discord, sem mexer no código.
  *
  * Seções editáveis:
- *   • boas-vindas   — texto e imagem/banner da mensagem de entrada de membros
+ *   • boas-vindas    — texto e imagem/banner da mensagem de entrada de membros
  *   • painel-suporte — texto e imagem/GIF do painel de tickets
  *
  * Acesso: apenas cargos de staff (mesmos do /sorteio e tickets).
@@ -33,22 +33,22 @@ import {
 export async function handleEditar(
   interaction: ChatInputCommandInteraction
 ): Promise<void> {
-  // Verificação de cargo (mesmo padrão que /sorteio)
   if (!interactionHasStaffRole(interaction.member as Parameters<typeof interactionHasStaffRole>[0])) {
     await interaction.reply({
-      content: '❌ Você não tem permissão para usar este comando.',
+      content: 'Você não tem permissão para usar este comando.',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  const secao = interaction.options.getString('seção', true);
+  // Nome da opção sem acento para evitar problemas de normalização Unicode
+  const secao = interaction.options.getString('secao', true);
   const config = getConfig();
 
   if (secao === 'boas-vindas') {
     const modal = new ModalBuilder()
       .setCustomId('editar_boas_vindas')
-      .setTitle('✏️ Editar — Boas-vindas');
+      .setTitle('Editar — Boas-vindas');
 
     modal.addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
@@ -66,9 +66,9 @@ export async function handleEditar(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('imagem')
-          .setLabel('URL da imagem/banner (opcional — deixe vazio para remover)')
+          .setLabel('URL da imagem/banner (deixe vazio para remover)')
           .setStyle(TextInputStyle.Short)
-          .setValue(config.welcome.imageUrl)
+          .setValue(config.welcome.imageUrl || ' ')
           .setMaxLength(512)
           .setRequired(false)
       )
@@ -81,7 +81,7 @@ export async function handleEditar(
   if (secao === 'painel-suporte') {
     const modal = new ModalBuilder()
       .setCustomId('editar_painel_suporte')
-      .setTitle('✏️ Editar — Painel de Suporte');
+      .setTitle('Editar — Painel de Suporte');
 
     modal.addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
@@ -96,9 +96,9 @@ export async function handleEditar(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId('imagem')
-          .setLabel('URL da imagem/GIF (opcional — deixe vazio para remover)')
+          .setLabel('URL da imagem/GIF (deixe vazio para remover)')
           .setStyle(TextInputStyle.Short)
-          .setValue(config.ticket.panelImageUrl)
+          .setValue(config.ticket.panelImageUrl || ' ')
           .setMaxLength(512)
           .setRequired(false)
       )
@@ -114,8 +114,15 @@ export async function handleEditar(
 export async function handleEditarModal(
   interaction: ModalSubmitInteraction
 ): Promise<void> {
-  const texto  = interaction.fields.getTextInputValue('texto').trim();
-  const imagem = interaction.fields.getTextInputValue('imagem').trim();
+  const texto = interaction.fields.getTextInputValue('texto').trim();
+
+  // Campo imagem é opcional — trata ausência e valor vazio com segurança
+  let imagem = '';
+  try {
+    imagem = interaction.fields.getTextInputValue('imagem').trim();
+  } catch {
+    imagem = '';
+  }
 
   // ── Boas-vindas ─────────────────────────────────────────────────────────────
   if (interaction.customId === 'editar_boas_vindas') {
@@ -123,11 +130,11 @@ export async function handleEditarModal(
 
     await interaction.reply({
       content:
-        '✅ **Texto de boas-vindas atualizado!**\n' +
+        '✅ Texto de boas-vindas atualizado!\n' +
         'O próximo membro a entrar já vai receber a nova mensagem.\n\n' +
-        '**Prévia do texto salvo:**\n' +
+        '**Prévia:**\n' +
         `> ${texto.replace(/\n/g, '\n> ')}` +
-        (imagem ? `\n\n🖼️ Imagem: ${imagem}` : '\n\n_(sem imagem configurada)_'),
+        (imagem ? `\n\n🖼️ ${imagem}` : '\n\n_(sem imagem)_'),
       flags: MessageFlags.Ephemeral,
     });
 
@@ -142,7 +149,6 @@ export async function handleEditarModal(
     const config = getConfig();
     let editedLive = false;
 
-    // Se temos o ID da mensagem do painel, tenta editá-la ao vivo no Discord
     if (config.ticket.panelMessageId && config.ticket.panelChannelId) {
       try {
         const ch = await interaction.client.channels
@@ -167,15 +173,15 @@ export async function handleEditarModal(
     }
 
     const liveNote = editedLive
-      ? `✏️ A mensagem do painel em <#${TICKET_PANEL_CHANNEL_ID}> foi atualizada ao vivo.`
-      : `⚠️ Não foi possível editar a mensagem do painel ao vivo. Use \`/ticket-painel\` para reenviar com o novo texto.`;
+      ? `Mensagem do painel em <#${TICKET_PANEL_CHANNEL_ID}> atualizada ao vivo.`
+      : `Texto salvo. Use \`/ticket-painel\` para reenviar o painel com o novo texto.`;
 
     await interaction.reply({
       content:
-        `✅ **Texto do painel de suporte atualizado!**\n${liveNote}\n\n` +
-        '**Prévia do texto salvo:**\n' +
+        `✅ Painel de suporte atualizado!\n${liveNote}\n\n` +
+        '**Prévia:**\n' +
         `> ${texto.replace(/\n/g, '\n> ')}` +
-        (imagem ? `\n\n🖼️ Imagem: ${imagem}` : '\n\n_(sem imagem configurada)_'),
+        (imagem ? `\n\n🖼️ ${imagem}` : '\n\n_(sem imagem)_'),
       flags: MessageFlags.Ephemeral,
     });
 
@@ -186,13 +192,13 @@ export async function handleEditarModal(
 
 // ─── Helpers (também usados em ticket.ts via re-exportação) ──────────────────
 
-/** Constrói o embed do painel de tickets com o texto e imagem fornecidos */
+/** Constrói o embed do painel de tickets */
 export function buildPanelEmbed(text: string, imageUrl: string): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle('Suporte')
     .setDescription(text)
     .setColor(0x5865F2)
-    .setFooter({ text: '🐾 Pet do GG • Sistema de Tickets' });
+    .setFooter({ text: 'Pet do GG · Sistema de Tickets' });
 
   if (imageUrl) embed.setImage(imageUrl);
   return embed;
@@ -204,9 +210,9 @@ export function buildPanelMenu(): ActionRowBuilder<StringSelectMenuBuilder> {
     .setCustomId('ticket_select')
     .setPlaceholder('Selecione uma opção')
     .addOptions([
-      { label: 'Suporte',    description: 'Abrir um ticket de suporte',    value: 'ticket_suporte',    emoji: '🛠️' },
-      { label: 'Dúvidas',   description: 'Abrir um ticket de dúvidas',    value: 'ticket_duvidas',   emoji: '❓' },
-      { label: 'Parcerias', description: 'Abrir um ticket de parcerias',  value: 'ticket_parcerias', emoji: '🤝' },
+      { label: 'Suporte',    description: 'Abrir um ticket de suporte',   value: 'ticket_suporte'    },
+      { label: 'Dúvidas',   description: 'Abrir um ticket de dúvidas',   value: 'ticket_duvidas'   },
+      { label: 'Parcerias', description: 'Abrir um ticket de parcerias', value: 'ticket_parcerias'  },
     ]);
 
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu);

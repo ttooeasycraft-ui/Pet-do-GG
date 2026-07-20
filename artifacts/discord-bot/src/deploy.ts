@@ -27,20 +27,20 @@ const commands = [
     .addStringOption((opt) =>
       opt
         .setName('modo')
-        .setDescription('Escolha o modo de sorteio')
+        .setDescription('Modo de sorteio')
         .setRequired(true)
         .addChoices(
-          { name: '🛡️⚔️❤️ Por Função (1 Tank · 2 Dano · 2 Suporte)', value: 'funcoes' },
-          { name: '🎲 Simples — N aleatórios de uma lista',            value: 'simples' }
+          { name: 'Por Função (1 Tank · 2 Dano · 2 Suporte)', value: 'funcoes' },
+          { name: 'Simples — N aleatórios de uma lista',       value: 'simples' }
         )
     )
     .addIntegerOption((opt) =>
       opt
         .setName('quantidade')
-        .setDescription('Quantos jogadores sortear (só para o modo Simples — padrão: 5)')
+        .setDescription('Quantos jogadores sortear (modo Simples — padrão: 5, máx: 100)')
         .setRequired(false)
         .setMinValue(2)
-        .setMaxValue(12)
+        .setMaxValue(100)
     ),
 
   // ── /ticket-painel ────────────────────────────────────────────────────────
@@ -52,15 +52,15 @@ const commands = [
   // ── /editar-texto ─────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName('editar-texto')
-    .setDescription('Edita os textos informativos do bot sem mexer no código (apenas staff)')
+    .setDescription('Edita os textos do bot sem mexer no código (apenas staff)')
     .addStringOption((opt) =>
       opt
-        .setName('seção')
-        .setDescription('Qual texto você quer editar?')
+        .setName('secao')
+        .setDescription('Qual texto editar?')
         .setRequired(true)
         .addChoices(
-          { name: '🎉 Boas-vindas — texto e imagem do embed de entrada',        value: 'boas-vindas'    },
-          { name: '🎟️ Painel de Suporte — texto e imagem do painel de tickets', value: 'painel-suporte' }
+          { name: 'Boas-vindas — texto e imagem do embed de entrada',  value: 'boas-vindas'    },
+          { name: 'Painel de Suporte — texto e imagem do painel',      value: 'painel-suporte' }
         )
     ),
 
