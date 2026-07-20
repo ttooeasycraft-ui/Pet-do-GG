@@ -1,0 +1,12 @@
+{
+  "welcome": {
+    "text": "Olá player novo!! Muito bom ter mais um Noob- ops, jogador conosco ✨❤️\n\n{membro} acabou de entrar!",
+    "imageUrl": ""
+  },
+  "ticket": {
+    "panelText": "Fale com a gente!\n\nTem alguma dúvida, precisa de ajuda ou quer propor uma parceria? Abra um ticket abaixo e nossa equipe te responde em breve.",
+    "panelImageUrl": "",
+    "panelMessageId": "1528576819299750000",
+    "panelChannelId": "1505935902759977000"
+  }
+}
