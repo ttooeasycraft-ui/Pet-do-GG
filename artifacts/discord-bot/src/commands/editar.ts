@@ -195,9 +195,9 @@ export async function handleEditarModal(
 /** Constrói o embed do painel de tickets */
 export function buildPanelEmbed(text: string, imageUrl: string): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setTitle('Suporte')
+    .setTitle('🎟️ Suporte')
     .setDescription(text)
-    .setColor(0x5865F2)
+    .setColor(0x0099ff)
     .setFooter({ text: 'Pet do GG · Sistema de Tickets' });
 
   if (imageUrl) embed.setImage(imageUrl);

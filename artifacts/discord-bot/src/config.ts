@@ -31,6 +31,11 @@ export interface BotConfig {
     panelMessageId: string;
     /** ID do canal onde o painel foi enviado */
     panelChannelId: string;
+    /** Histórico usado para limite e ranking de tickets. */
+    stats: {
+      opened: Array<{ userId: string; at: number }>;
+      closed: Array<{ userId: string; at: number; closedBy: string }>;
+    };
   };
 }
 
@@ -46,15 +51,31 @@ export const DEFAULTS: BotConfig = {
     panelImageUrl: '',
     panelMessageId: '',
     panelChannelId: '',
+    stats: {
+      opened: [],
+      closed: [],
+    },
   },
 };
 
 let _config: BotConfig = deepMerge(DEFAULTS, {});
 
 function deepMerge(defaults: BotConfig, saved: Partial<BotConfig>): BotConfig {
+  const savedTicket = saved.ticket ?? {};
+  const savedStats =
+    (savedTicket as Partial<BotConfig['ticket']>).stats as
+      | Partial<BotConfig['ticket']['stats']>
+      | undefined;
   return {
     welcome: { ...defaults.welcome, ...(saved.welcome ?? {}) },
-    ticket:  { ...defaults.ticket,  ...(saved.ticket  ?? {}) },
+    ticket:  {
+      ...defaults.ticket,
+      ...savedTicket,
+      stats: {
+        opened: Array.isArray(savedStats?.opened) ? savedStats.opened : [],
+        closed: Array.isArray(savedStats?.closed) ? savedStats.closed : [],
+      },
+    },
   };
 }
 
@@ -65,6 +86,7 @@ export function loadConfig(): void {
     if (existsSync(CONFIG_PATH)) {
       const saved = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Partial<BotConfig>;
       _config = deepMerge(DEFAULTS, saved);
+      migrateWelcomeText();
       console.log('[Config] Carregada de', CONFIG_PATH);
     } else {
       console.log('[Config] Nenhum arquivo salvo — usando valores padrão.');
@@ -96,7 +118,79 @@ export function setTicketPanelMessage(messageId: string, channelId: string): voi
   persist();
 }
 
+export function getTicketRateLimit(userId: string, now = Date.now()): number {
+  const hourAgo = now - 60 * 60 * 1000;
+  const recent = _config.ticket.stats.opened
+    .filter((event) => event.userId === userId && event.at > hourAgo)
+    .sort((a, b) => b.at - a.at);
+
+  if (recent.length < 2) return 0;
+  return Math.max(0, recent[0].at + 60 * 60 * 1000 - now);
+}
+
+export function recordTicketOpened(userId: string, at = Date.now()): void {
+  _config.ticket.stats.opened.push({ userId, at });
+  trimStats();
+  persist();
+}
+
+export function recordTicketClosed(
+  userId: string,
+  closedBy: string,
+  at = Date.now()
+): void {
+  _config.ticket.stats.closed.push({ userId, at, closedBy });
+  trimStats();
+  persist();
+}
+
+export function getTicketRanking(): Array<{
+  userId: string;
+  opened: number;
+  closed: number;
+  total: number;
+}> {
+  const ranking = new Map<string, { opened: number; closed: number }>();
+
+  for (const event of _config.ticket.stats.opened) {
+    const current = ranking.get(event.userId) ?? { opened: 0, closed: 0 };
+    current.opened++;
+    ranking.set(event.userId, current);
+  }
+
+  for (const event of _config.ticket.stats.closed) {
+    const current = ranking.get(event.closedBy) ?? { opened: 0, closed: 0 };
+    current.closed++;
+    ranking.set(event.closedBy, current);
+  }
+
+  return [...ranking.entries()]
+    .map(([userId, counts]) => ({
+      userId,
+      ...counts,
+      total: counts.opened + counts.closed,
+    }))
+    .sort((a, b) => b.total - a.total || b.opened - a.opened)
+    .slice(0, 10);
+}
+
 // ─── Internal ─────────────────────────────────────────────────────────────────
+
+function migrateWelcomeText(): void {
+  if (!_config.welcome.text.includes('{contagem}')) {
+    _config.welcome.text += '\nVocê é o nosso **{contagem}º** membro! 🐾';
+    persist();
+  }
+}
+
+function trimStats(): void {
+  _config.ticket.stats.opened = _config.ticket.stats.opened
+    .sort((a, b) => a.at - b.at)
+    .slice(-1000);
+  _config.ticket.stats.closed = _config.ticket.stats.closed
+    .sort((a, b) => a.at - b.at)
+    .slice(-1000);
+}
 
 function persist(): void {
   try {

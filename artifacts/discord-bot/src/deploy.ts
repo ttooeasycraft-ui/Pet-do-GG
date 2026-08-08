@@ -64,6 +64,71 @@ const commands = [
         )
     ),
 
+  new SlashCommandBuilder()
+    .setName('ticket')
+    .setDescription('Ferramentas do sistema de tickets')
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('alert')
+        .setDescription('Lembra o responsável de responder no ticket atual')
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('rank')
+        .setDescription('Mostra o ranking de uso e atendimento dos tickets')
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('voice')
+        .setDescription('Cria uma call vinculada ao ticket atual')
+        .addStringOption((opt) =>
+          opt
+            .setName('nome')
+            .setDescription('Nome da call')
+            .setRequired(false)
+            .setMaxLength(100)
+        )
+        .addIntegerOption((opt) =>
+          opt
+            .setName('limite')
+            .setDescription('Limite de pessoas; 0 significa sem limite')
+            .setRequired(false)
+            .setMinValue(0)
+            .setMaxValue(99)
+        )
+    ),
+
+  new SlashCommandBuilder()
+    .setName('user')
+    .setDescription('Consulta informações públicas de usuários')
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('avatar')
+        .setDescription('Mostra o avatar de um usuário')
+        .addUserOption((opt) =>
+          opt.setName('usuario').setDescription('Usuário').setRequired(false)
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('info')
+        .setDescription('Mostra informações públicas de um usuário')
+        .addUserOption((opt) =>
+          opt.setName('usuario').setDescription('Usuário').setRequired(false)
+        )
+    ),
+
+  new SlashCommandBuilder()
+    .setName('sugerir')
+    .setDescription('Envia uma sugestão para a equipe')
+    .addStringOption((opt) =>
+      opt
+        .setName('ideia')
+        .setDescription('Escreva sua sugestão')
+        .setRequired(true)
+        .setMaxLength(1000)
+    ),
+
 ].map((cmd) => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);

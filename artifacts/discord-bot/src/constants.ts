@@ -12,11 +12,22 @@ export const STAFF_ROLE_IDS = [
   '1498274317417447485', // ⟢N᥆᥉᥉᥆ Dᥱ᥎ᥱᥣ᥆ρᥱr
 ];
 
+/** Cargos que devem ser mencionados quando um ticket é aberto. */
+export const TICKET_NOTIFY_ROLE_IDS = STAFF_ROLE_IDS.filter(
+  (id) => id !== '1498274317417447485'
+);
+
 /** Canal #eventos — único canal onde /sorteio pode ser usado */
 export const SORTEIO_CHANNEL_ID = '1524833320658141394';
 
 /** Canal onde o painel de tickets fica fixo */
 export const TICKET_PANEL_CHANNEL_ID = '1505935902759977000';
+
+/** Canal legado que contém o painel de criação de calls. */
+export const VOICE_PANEL_CHANNEL_ID = '1511839169763344487';
+
+/** Canal dedicado para sugestões enviadas por /sugerir. */
+export const SUGGESTIONS_CHANNEL_ID = '1535487520132042852';
 
 /**
  * Verifica se a interação veio de alguém com cargo de staff.
