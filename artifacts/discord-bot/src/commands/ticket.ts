@@ -34,7 +34,26 @@ import {
   setTicketPanelMessage,
 } from '../config.js';
 import { buildPanelEmbed, buildPanelMenu } from './editar.js';
-import { trackGeneralCall } from '../events/voice.js';
+import {
+  getTicketCallIdFromTopic,
+  registerGeneralCall,
+  setTicketCallIdInTopic,
+} from '../voice.js';
+
+// ─── Trava anti-duplicação ────────────────────────────────────────────────────
+// Evita que cliques duplos/rápidos disparem a criação de dois tickets ou duas
+// calls ao mesmo tempo, antes do primeiro terminar de ser processado.
+const pendingLocks = new Set<string>();
+
+function acquireLock(key: string): boolean {
+  if (pendingLocks.has(key)) return false;
+  pendingLocks.add(key);
+  return true;
+}
+
+function releaseLock(key: string): void {
+  pendingLocks.delete(key);
+}
 
 const TICKET_TYPES = {
   ticket_suporte: { label: 'Suporte', color: 0x0099ff, description: 'suporte técnico ou ajuda geral' },
@@ -61,9 +80,7 @@ function isTicketChannel(channel: unknown): channel is TextChannel {
 }
 
 function ticketOwnerId(channel: TextChannel): string | null {
-  const match = channel.topic?.match(
-    /—\s*(\d{17,20})(?:\s+—\s+voice:\d{17,20})?$/
-  );
+  const match = channel.topic?.match(/—\s*(\d{17,20})(?:\n|$)/);
   if (match) return match[1];
 
   const memberOverwrite = channel.permissionOverwrites.cache.find(
@@ -73,36 +90,6 @@ function ticketOwnerId(channel: TextChannel): string | null {
       overwrite.id !== channel.client.user.id
   );
   return memberOverwrite?.id ?? null;
-}
-
-function ticketVoiceId(channel: TextChannel): string | null {
-  return channel.topic?.match(/(?:^|\s|—)voice:(\d{17,20})(?:\s|$)/)?.[1] ?? null;
-}
-
-async function setTicketVoiceId(
-  channel: TextChannel,
-  voiceId: string | null,
-): Promise<void> {
-  const topicWithoutVoice = (channel.topic ?? '')
-    .replace(/\s+—\s+voice:\d{17,20}\s*$/, '')
-    .trim();
-  const nextTopic = voiceId
-    ? `${topicWithoutVoice} — voice:${voiceId}`
-    : topicWithoutVoice;
-  await channel.setTopic(nextTopic);
-}
-
-async function deleteTicketVoice(
-  guild: TextChannel['guild'],
-  voiceId: string | null,
-): Promise<void> {
-  if (!voiceId) return;
-
-  const voice = await guild.channels.fetch(voiceId).catch(() => null);
-  if (!voice) return;
-
-  await voice.delete('Call de ticket exclu junto com o ticket');
-  console.log(`[Ticket] Call vinculada excluída — ${voiceId}`);
 }
 
 function staffOnly(interaction: ChatInputCommandInteraction): boolean {
@@ -171,98 +158,116 @@ export async function handleTicketSelect(
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  const guild = interaction.guild!;
-  const user = interaction.user;
-  const channelName = slugName(typeInfo.label, user.username);
-  const existing = guild.channels.cache.find(
-    (channel) => channel.isTextBased() && channel.name === channelName
-  );
-
-  if (existing) {
-    await interaction.editReply({
-      content: `Você já tem um ticket de ${typeInfo.label} aberto: <#${existing.id}>`,
+  // Trava anti-duplo-clique: só uma criação de ticket por usuário por vez.
+  const lockKey = `ticket-create:${interaction.user.id}`;
+  if (!acquireLock(lockKey)) {
+    await interaction.reply({
+      content: 'Já estou criando seu ticket, aguarde um instante...',
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  const category = guild.channels.cache.find(
-    (channel): channel is CategoryChannel =>
-      channel.type === ChannelType.GuildCategory &&
-      channel.name.toLowerCase().includes('ticket')
-  ) ?? null;
+  try {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const ticketChannel = await guild.channels.create({
-    name: channelName,
-    type: ChannelType.GuildText,
-    parent: category?.id ?? null,
-    topic: `Ticket de ${typeInfo.label} — ${user.username} — ${user.id}`,
-    permissionOverwrites: [
-      {
-        id: guild.roles.everyone,
-        deny: [PermissionFlagsBits.ViewChannel],
-      },
-      {
-        id: user.id,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory,
-          PermissionFlagsBits.AttachFiles,
-        ],
-      },
-      ...STAFF_ROLE_IDS.map((roleId) => ({
-        id: roleId,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory,
-          PermissionFlagsBits.AttachFiles,
-          PermissionFlagsBits.ManageMessages,
-        ],
-      })),
-    ],
-  });
+    const guild = interaction.guild!;
+    const user = interaction.user;
+    const channelName = slugName(typeInfo.label, user.username);
 
-  const openEmbed = new EmbedBuilder()
-    .setTitle(`Ticket — ${typeInfo.label}`)
-    .setDescription(
-      `Olá, <@${user.id}>!\n\n` +
-      `Você abriu um ticket de **${typeInfo.description}**.\n` +
-      'Nossa equipe vai te atender em breve. Descreva sua situação aqui.\n\n' +
-      'Use o botão abaixo para fechar o ticket quando tudo estiver resolvido.'
-    )
-    .setColor(typeInfo.color)
-    .setFooter({
-      text: `Pet do GG · ${new Date().toLocaleString('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
-      })}`,
+    // Busca direto na API (guild.channels.fetch) em vez de confiar só no cache,
+    // que pode estar desatualizado no exato momento de um segundo clique.
+    const allChannels = await guild.channels.fetch();
+    const existing = allChannels.find(
+      (channel) => channel?.isTextBased() && channel.name === channelName
+    );
+
+    if (existing) {
+      await interaction.editReply({
+        content: `Você já tem um ticket de ${typeInfo.label} aberto: <#${existing.id}>`,
+      });
+      return;
+    }
+
+    const category = guild.channels.cache.find(
+      (channel): channel is CategoryChannel =>
+        channel.type === ChannelType.GuildCategory &&
+        channel.name.toLowerCase().includes('ticket')
+    ) ?? null;
+
+    const ticketChannel = await guild.channels.create({
+      name: channelName,
+      type: ChannelType.GuildText,
+      parent: category?.id ?? null,
+      topic: `Ticket de ${typeInfo.label} — ${user.username} — ${user.id}\nCall vinculada: nenhuma`,
+      permissionOverwrites: [
+        {
+          id: guild.roles.everyone,
+          deny: [PermissionFlagsBits.ViewChannel],
+        },
+        {
+          id: user.id,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.AttachFiles,
+          ],
+        },
+        ...STAFF_ROLE_IDS.map((roleId) => ({
+          id: roleId,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory,
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.ManageMessages,
+          ],
+        })),
+      ],
     });
 
-  const closeButton = new ButtonBuilder()
-    .setCustomId('ticket_close')
-    .setLabel('Fechar ticket')
-    .setStyle(ButtonStyle.Danger);
-  const voiceButton = new ButtonBuilder()
-    .setCustomId('ticket_voice')
-    .setLabel('Criar call')
-    .setStyle(ButtonStyle.Primary);
+    const openEmbed = new EmbedBuilder()
+      .setTitle(`Ticket — ${typeInfo.label}`)
+      .setDescription(
+        `Olá, <@${user.id}>!\n\n` +
+        `Você abriu um ticket de **${typeInfo.description}**.\n` +
+        'Nossa equipe vai te atender em breve. Descreva sua situação aqui.\n\n' +
+        'Use o botão abaixo para fechar o ticket quando tudo estiver resolvido.'
+      )
+      .setColor(typeInfo.color)
+      .setFooter({
+        text: `Pet do GG · ${new Date().toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+        })}`,
+      });
 
-  await ticketChannel.send({
-    content: `<@${user.id}> ${TICKET_NOTIFY_ROLE_IDS.map((id) => `<@&${id}>`).join(' ')}`,
-    embeds: [openEmbed],
-    components: [
-      new ActionRowBuilder<ButtonBuilder>().addComponents(closeButton, voiceButton),
-    ],
-  });
+    const closeButton = new ButtonBuilder()
+      .setCustomId('ticket_close')
+      .setLabel('Fechar ticket')
+      .setStyle(ButtonStyle.Danger);
+    const voiceButton = new ButtonBuilder()
+      .setCustomId('ticket_voice')
+      .setLabel('Criar call')
+      .setStyle(ButtonStyle.Primary);
 
-  recordTicketOpened(user.id);
-  await interaction.editReply({
-    content: `Ticket criado! <#${ticketChannel.id}>`,
-  });
+    await ticketChannel.send({
+      content: `<@${user.id}> ${TICKET_NOTIFY_ROLE_IDS.map((id) => `<@&${id}>`).join(' ')}`,
+      embeds: [openEmbed],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(closeButton, voiceButton),
+      ],
+    });
 
-  console.log(`[Ticket] Aberto por ${user.username} — tipo: ${typeInfo.label} — canal: ${ticketChannel.id}`);
+    recordTicketOpened(user.id);
+    await interaction.editReply({
+      content: `Ticket criado! <#${ticketChannel.id}>`,
+    });
+
+    console.log(`[Ticket] Aberto por ${user.username} — tipo: ${typeInfo.label} — canal: ${ticketChannel.id}`);
+  } finally {
+    releaseLock(lockKey);
+  }
 }
 
 export async function handleTicketAlert(
@@ -351,29 +356,40 @@ export async function handleTicketClose(
   interaction: ButtonInteraction
 ): Promise<void> {
   const channel = interaction.channel;
-  const ownerId = channel instanceof TextChannel ? ticketOwnerId(channel) : null;
-  const voiceId = channel instanceof TextChannel ? ticketVoiceId(channel) : null;
+
+  // Busca o canal atualizado (não confia só no cache) para garantir que o
+  // tópico com a call vinculada esteja com o valor mais recente possível.
+  const freshChannel =
+    channel instanceof TextChannel ? await channel.fetch().catch(() => channel) : channel;
+
+  const ownerId = freshChannel instanceof TextChannel ? ticketOwnerId(freshChannel) : null;
+  const linkedCallId =
+    freshChannel instanceof TextChannel
+      ? getTicketCallIdFromTopic(freshChannel.topic)
+      : null;
+
+  if (linkedCallId) {
+    const linkedCall = await interaction.client.channels
+      .fetch(linkedCallId)
+      .catch(() => null);
+    if (linkedCall?.isVoiceBased()) {
+      await linkedCall.delete('Ticket fechado').catch((err) =>
+        console.error('[Ticket] Erro ao apagar call vinculada:', err)
+      );
+    }
+  }
+
+  const closeTimestamp = Math.floor((Date.now() + 5_000) / 1000);
 
   await interaction.reply({
     embeds: [
       new EmbedBuilder()
         .setDescription(
-          `Ticket fechado por <@${interaction.user.id}>.\nO canal será excluído em **5 segundos**.`
+          `Ticket fechado por <@${interaction.user.id}>.\nO canal será excluído <t:${closeTimestamp}:R>.`
         )
         .setColor(0xED4245),
     ],
   });
-
-  if (channel instanceof TextChannel) {
-    await deleteTicketVoice(channel.guild, voiceId).catch((error) => {
-      console.error(`[Ticket] Erro ao excluir a call vinculada ${voiceId}:`, error);
-    });
-    if (voiceId) {
-      await setTicketVoiceId(channel, null).catch((error) => {
-        console.error(`[Ticket] Erro ao limpar a referência da call ${voiceId}:`, error);
-      });
-    }
-  }
 
   if (ownerId) recordTicketClosed(ownerId, interaction.user.id);
   setTimeout(async () => {
@@ -398,69 +414,75 @@ export async function handleTicketVoiceButton(
 
 async function createTicketVoice(
   interaction: ChatInputCommandInteraction | ButtonInteraction,
-  ticketChannel: TextChannel,
+  ticketChannel: TextChannel
 ): Promise<void> {
-  const existingVoiceId = ticketVoiceId(ticketChannel);
-  if (existingVoiceId) {
-    const existingVoice = await ticketChannel.guild.channels
-      .fetch(existingVoiceId)
-      .catch(() => null);
-    if (existingVoice?.type === ChannelType.GuildVoice) {
-      await interaction.reply({
-        content: `Este ticket já possui uma call: <#${existingVoice.id}>`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    await setTicketVoiceId(ticketChannel, null);
+  const lockKey = `ticket-voice:${ticketChannel.id}`;
+  if (!acquireLock(lockKey)) {
+    await interaction.reply({
+      content: 'Já estou criando a call deste ticket, aguarde um instante...',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
   }
-
-  const guild = ticketChannel.guild;
-  const ownerId = ticketOwnerId(ticketChannel);
-  const staffOverwrites = STAFF_ROLE_IDS.map((roleId) => ({
-    id: roleId,
-    allow: [
-      PermissionFlagsBits.ViewChannel,
-      PermissionFlagsBits.Connect,
-      PermissionFlagsBits.Speak,
-      PermissionFlagsBits.ManageChannels,
-    ],
-  }));
-  const ownerOverwrite = ownerId
-    ? [{
-        id: ownerId,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.Connect,
-          PermissionFlagsBits.Speak,
-        ],
-      }]
-    : [];
-
-  const voice = await guild.channels.create({
-    name: 'Suporte Call',
-    type: ChannelType.GuildVoice,
-    parent: ticketChannel.parentId ?? undefined,
-    userLimit: 0,
-    permissionOverwrites: [
-      { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
-      ...ownerOverwrite,
-      ...staffOverwrites,
-    ],
-  });
 
   try {
-    await setTicketVoiceId(ticketChannel, voice.id);
-  } catch (error) {
-    await voice.delete('Não foi possível salvar o vínculo com o ticket').catch(() => null);
-    throw error;
-  }
+    // Sempre refaz o fetch do canal (não usa o topic em cache) para pegar o
+    // valor mais atual, evitando duas calls quando o botão é clicado 2x rápido.
+    const freshChannel = await ticketChannel.fetch();
+    const existingCallId = getTicketCallIdFromTopic(freshChannel.topic);
+    if (existingCallId) {
+      const existingCall = await interaction.client.channels
+        .fetch(existingCallId)
+        .catch(() => null);
+      if (existingCall?.isVoiceBased()) {
+        await interaction.reply({
+          content: `A call deste ticket já existe: <#${existingCall.id}>`,
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
+    }
 
-  await interaction.reply({
-    content: `Call criada: <#${voice.id}> (Suporte Call, sem limite)`,
-    flags: MessageFlags.Ephemeral,
-  });
+    const guild = ticketChannel.guild;
+    const ownerId = ticketOwnerId(ticketChannel);
+    const allowedUsers = [ownerId].filter(
+      (id): id is string => Boolean(id)
+    );
+
+    const voice = await guild.channels.create({
+      name: 'Suporte Call',
+      type: ChannelType.GuildVoice,
+      parent: ticketChannel.parentId ?? undefined,
+      permissionOverwrites: [
+        { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
+        ...allowedUsers.map((id) => ({
+          id,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.Connect,
+            PermissionFlagsBits.Speak,
+          ],
+        })),
+        ...STAFF_ROLE_IDS.map((roleId) => ({
+          id: roleId,
+          allow: [
+            PermissionFlagsBits.ViewChannel,
+            PermissionFlagsBits.Connect,
+            PermissionFlagsBits.Speak,
+            PermissionFlagsBits.ManageChannels,
+          ],
+        })),
+      ],
+    });
+
+    await ticketChannel.setTopic(setTicketCallIdInTopic(ticketChannel.topic, voice.id));
+    await interaction.reply({
+      content: `Call de suporte criada: <#${voice.id}> (sem limite).`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } finally {
+    releaseLock(lockKey);
+  }
 }
 
 async function sendPanel(
@@ -517,36 +539,48 @@ export async function handleCreateCallModal(
     return;
   }
 
-  const panel = await interaction.client.channels.fetch(VOICE_PANEL_CHANNEL_ID);
-  if (!panel || !('guild' in panel) || !panel.guild) {
+  // Trava anti-duplo-clique/envio: só uma criação de call geral por usuário por vez.
+  const lockKey = `general-call:${interaction.user.id}`;
+  if (!acquireLock(lockKey)) {
     await interaction.reply({
-      content: 'Não encontrei a categoria das calls.',
+      content: 'Já estou criando sua call, aguarde um instante...',
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  const voice = await panel.guild.channels.create({
-    name: cleanChannelName(name),
-    type: ChannelType.GuildVoice,
-    parent: 'parentId' in panel ? panel.parentId ?? undefined : undefined,
-    userLimit: limit,
-  });
-  trackGeneralCall(voice);
+  try {
+    const panel = await interaction.client.channels.fetch(VOICE_PANEL_CHANNEL_ID);
+    if (!panel || !('guild' in panel) || !panel.guild) {
+      await interaction.reply({
+        content: 'Não encontrei a categoria das calls.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
 
-  await interaction.reply({
-    content: `Call criada: <#${voice.id}>${limit ? ` (limite: ${limit})` : ' (sem limite)'}`,
-    flags: MessageFlags.Ephemeral,
-  });
+    const voice = await panel.guild.channels.create({
+      name: cleanChannelName(name),
+      type: ChannelType.GuildVoice,
+      parent: 'parentId' in panel ? panel.parentId ?? undefined : undefined,
+      userLimit: limit,
+    });
+
+    registerGeneralCall(voice);
+    await interaction.reply({
+      content: `Call criada: <#${voice.id}>${limit ? ` (limite: ${limit})` : ' (sem limite)'}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } finally {
+    releaseLock(lockKey);
+  }
 }
 
 export function buildCallPanelEmbed(): EmbedBuilder {
   return new EmbedBuilder()
     .setTitle('📞 Criar Call de Voz')
     .setDescription(
-      'Clique no botão abaixo para criar uma call de voz personalizada. ' +
-      'Se ninguém entrar em até 1 minuto, ela será excluída automaticamente; ' +
-      'depois de usada, também será excluída quando ficar vazia.'
+      'Clique no botão abaixo para criar uma call de voz personalizada com nome e limite de membros definidos por você.'
     )
     .setColor(0x0099ff);
 }
@@ -574,4 +608,4 @@ function slugName(label: string, username: string): string {
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
   return `ticket-${clean(label)}-${clean(username)}`.slice(0, 100);
-}
+                                                       }
