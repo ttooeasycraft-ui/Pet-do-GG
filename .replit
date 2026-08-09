@@ -44,3 +44,6 @@ timeoutMs = 20000
 [userenv.shared]
 WELCOME_CHANNEL_ID = "1481456467759468556"
 GUILD_ID = "1481456465243017338"
+
+[nix]
+channel = "stable-25_05"
