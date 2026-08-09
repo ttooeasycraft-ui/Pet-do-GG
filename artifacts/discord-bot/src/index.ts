@@ -20,11 +20,11 @@ import {
   handleTicketSetup,
   handleTicketVoice,
   handleTicketVoiceButton,
-  handleTicketVoiceModal,
 } from './commands/ticket.js';
 import { handleEditar, handleEditarModal } from './commands/editar.js';
 import { handleSuggestion, handleUserAvatar, handleUserInfo } from './commands/user.js';
 import { SUGGESTIONS_CHANNEL_ID } from './constants.js';
+import { handleVoiceStateUpdate } from './events/voice.js';
 
 // Força stdout sem buffer para que os logs apareçam no workflow
 process.stdout.write('');
@@ -65,6 +65,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates,
   ],
 });
 
@@ -72,6 +73,8 @@ client.once(Events.ClientReady, (c) => {
   console.log(`✅ Pet do GG online como: ${c.user.username}`);
   console.log(`🔗 Servidores conectados: ${c.guilds.cache.size}`);
 });
+
+client.on(Events.VoiceStateUpdate, handleVoiceStateUpdate);
 
 // ── Boas-vindas ───────────────────────────────────────────────────────────────
 client.on(Events.GuildMemberAdd, (member: GuildMember) => {
@@ -113,8 +116,6 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await handleSorteioModal(interaction);
       } else if (interaction.customId.startsWith('editar_')) {
         await handleEditarModal(interaction);
-      } else if (interaction.customId === 'ticket_voice_modal') {
-        await handleTicketVoiceModal(interaction);
       } else if (interaction.customId === 'create_call_modal') {
         await handleCreateCallModal(interaction);
       }

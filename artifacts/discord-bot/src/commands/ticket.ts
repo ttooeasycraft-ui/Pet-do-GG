@@ -34,6 +34,7 @@ import {
   setTicketPanelMessage,
 } from '../config.js';
 import { buildPanelEmbed, buildPanelMenu } from './editar.js';
+import { trackGeneralCall } from '../events/voice.js';
 
 const TICKET_TYPES = {
   ticket_suporte: { label: 'Suporte', color: 0x0099ff, description: 'suporte técnico ou ajuda geral' },
@@ -60,7 +61,9 @@ function isTicketChannel(channel: unknown): channel is TextChannel {
 }
 
 function ticketOwnerId(channel: TextChannel): string | null {
-  const match = channel.topic?.match(/—\s*(\d{17,20})$/);
+  const match = channel.topic?.match(
+    /—\s*(\d{17,20})(?:\s+—\s+voice:\d{17,20})?$/
+  );
   if (match) return match[1];
 
   const memberOverwrite = channel.permissionOverwrites.cache.find(
@@ -70,6 +73,36 @@ function ticketOwnerId(channel: TextChannel): string | null {
       overwrite.id !== channel.client.user.id
   );
   return memberOverwrite?.id ?? null;
+}
+
+function ticketVoiceId(channel: TextChannel): string | null {
+  return channel.topic?.match(/(?:^|\s|—)voice:(\d{17,20})(?:\s|$)/)?.[1] ?? null;
+}
+
+async function setTicketVoiceId(
+  channel: TextChannel,
+  voiceId: string | null,
+): Promise<void> {
+  const topicWithoutVoice = (channel.topic ?? '')
+    .replace(/\s+—\s+voice:\d{17,20}\s*$/, '')
+    .trim();
+  const nextTopic = voiceId
+    ? `${topicWithoutVoice} — voice:${voiceId}`
+    : topicWithoutVoice;
+  await channel.setTopic(nextTopic);
+}
+
+async function deleteTicketVoice(
+  guild: TextChannel['guild'],
+  voiceId: string | null,
+): Promise<void> {
+  if (!voiceId) return;
+
+  const voice = await guild.channels.fetch(voiceId).catch(() => null);
+  if (!voice) return;
+
+  await voice.delete('Call de ticket exclu junto com o ticket');
+  console.log(`[Ticket] Call vinculada excluída — ${voiceId}`);
 }
 
 function staffOnly(interaction: ChatInputCommandInteraction): boolean {
@@ -311,9 +344,7 @@ export async function handleTicketVoice(
     return;
   }
 
-  const name = interaction.options.getString('nome') ?? `Call ${channel.name}`;
-  const limit = interaction.options.getInteger('limite') ?? 0;
-  await createTicketVoice(interaction, channel, name, limit);
+  await createTicketVoice(interaction, channel);
 }
 
 export async function handleTicketClose(
@@ -321,6 +352,7 @@ export async function handleTicketClose(
 ): Promise<void> {
   const channel = interaction.channel;
   const ownerId = channel instanceof TextChannel ? ticketOwnerId(channel) : null;
+  const voiceId = channel instanceof TextChannel ? ticketVoiceId(channel) : null;
 
   await interaction.reply({
     embeds: [
@@ -331,6 +363,17 @@ export async function handleTicketClose(
         .setColor(0xED4245),
     ],
   });
+
+  if (channel instanceof TextChannel) {
+    await deleteTicketVoice(channel.guild, voiceId).catch((error) => {
+      console.error(`[Ticket] Erro ao excluir a call vinculada ${voiceId}:`, error);
+    });
+    if (voiceId) {
+      await setTicketVoiceId(channel, null).catch((error) => {
+        console.error(`[Ticket] Erro ao limpar a referência da call ${voiceId}:`, error);
+      });
+    }
+  }
 
   if (ownerId) recordTicketClosed(ownerId, interaction.user.id);
   setTimeout(async () => {
@@ -350,99 +393,72 @@ export async function handleTicketVoiceButton(
     return;
   }
 
-  const modal = new ModalBuilder()
-    .setCustomId('ticket_voice_modal')
-    .setTitle('Criar call do ticket')
-    .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId('nome')
-          .setLabel('Nome')
-          .setPlaceholder('Ex.: Atendimento por voz')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-          .setMaxLength(100)
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId('limite')
-          .setLabel('Limite (0 = sem limite)')
-          .setPlaceholder('Deixe vazio ou use 0 para sem limite')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false)
-          .setMaxLength(2)
-      )
-    );
-  await interaction.showModal(modal);
-}
-
-export async function handleTicketVoiceModal(
-  interaction: ModalSubmitInteraction
-): Promise<void> {
-  const channel = interaction.channel;
-  if (!isTicketChannel(channel)) {
-    await interaction.reply({
-      content: 'Este formulário só funciona dentro de um ticket.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  const name = interaction.fields.getTextInputValue('nome').trim();
-  const rawLimit = interaction.fields.getTextInputValue('limite').trim();
-  const limit = rawLimit ? Number.parseInt(rawLimit, 10) : 0;
-  await createTicketVoice(interaction, channel, name, Number.isFinite(limit) ? limit : -1);
+  await createTicketVoice(interaction, channel);
 }
 
 async function createTicketVoice(
-  interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
   ticketChannel: TextChannel,
-  name: string,
-  limit: number
 ): Promise<void> {
-  if (!name || limit < 0 || limit > 99) {
-    await interaction.reply({
-      content: 'Informe um nome válido e um limite entre 0 e 99 (0 = sem limite).',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
+  const existingVoiceId = ticketVoiceId(ticketChannel);
+  if (existingVoiceId) {
+    const existingVoice = await ticketChannel.guild.channels
+      .fetch(existingVoiceId)
+      .catch(() => null);
+    if (existingVoice?.type === ChannelType.GuildVoice) {
+      await interaction.reply({
+        content: `Este ticket já possui uma call: <#${existingVoice.id}>`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    await setTicketVoiceId(ticketChannel, null);
   }
 
   const guild = ticketChannel.guild;
   const ownerId = ticketOwnerId(ticketChannel);
-  const allowedUsers = [ownerId, interaction.user.id].filter(
-    (id): id is string => Boolean(id)
-  );
+  const staffOverwrites = STAFF_ROLE_IDS.map((roleId) => ({
+    id: roleId,
+    allow: [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.Connect,
+      PermissionFlagsBits.Speak,
+      PermissionFlagsBits.ManageChannels,
+    ],
+  }));
+  const ownerOverwrite = ownerId
+    ? [{
+        id: ownerId,
+        allow: [
+          PermissionFlagsBits.ViewChannel,
+          PermissionFlagsBits.Connect,
+          PermissionFlagsBits.Speak,
+        ],
+      }]
+    : [];
 
   const voice = await guild.channels.create({
-    name: cleanChannelName(name),
+    name: 'Suporte Call',
     type: ChannelType.GuildVoice,
     parent: ticketChannel.parentId ?? undefined,
-    userLimit: limit,
+    userLimit: 0,
     permissionOverwrites: [
       { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
-      ...allowedUsers.map((id) => ({
-        id,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.Connect,
-          PermissionFlagsBits.Speak,
-        ],
-      })),
-      ...STAFF_ROLE_IDS.map((roleId) => ({
-        id: roleId,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.Connect,
-          PermissionFlagsBits.Speak,
-          PermissionFlagsBits.ManageChannels,
-        ],
-      })),
+      ...ownerOverwrite,
+      ...staffOverwrites,
     ],
   });
 
+  try {
+    await setTicketVoiceId(ticketChannel, voice.id);
+  } catch (error) {
+    await voice.delete('Não foi possível salvar o vínculo com o ticket').catch(() => null);
+    throw error;
+  }
+
   await interaction.reply({
-    content: `Call criada: <#${voice.id}>${limit ? ` (limite: ${limit})` : ' (sem limite)'}`,
+    content: `Call criada: <#${voice.id}> (Suporte Call, sem limite)`,
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -516,6 +532,7 @@ export async function handleCreateCallModal(
     parent: 'parentId' in panel ? panel.parentId ?? undefined : undefined,
     userLimit: limit,
   });
+  trackGeneralCall(voice);
 
   await interaction.reply({
     content: `Call criada: <#${voice.id}>${limit ? ` (limite: ${limit})` : ' (sem limite)'}`,
@@ -527,7 +544,9 @@ export function buildCallPanelEmbed(): EmbedBuilder {
   return new EmbedBuilder()
     .setTitle('📞 Criar Call de Voz')
     .setDescription(
-      'Clique no botão abaixo para criar uma call de voz personalizada com nome e limite de membros definidos por você.'
+      'Clique no botão abaixo para criar uma call de voz personalizada. ' +
+      'Se ninguém entrar em até 1 minuto, ela será excluída automaticamente; ' +
+      'depois de usada, também será excluída quando ficar vazia.'
     )
     .setColor(0x0099ff);
 }

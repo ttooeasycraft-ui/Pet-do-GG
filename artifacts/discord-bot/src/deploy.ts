@@ -80,22 +80,7 @@ const commands = [
     .addSubcommand((subcommand) =>
       subcommand
         .setName('voice')
-        .setDescription('Cria uma call vinculada ao ticket atual')
-        .addStringOption((opt) =>
-          opt
-            .setName('nome')
-            .setDescription('Nome da call')
-            .setRequired(false)
-            .setMaxLength(100)
-        )
-        .addIntegerOption((opt) =>
-          opt
-            .setName('limite')
-            .setDescription('Limite de pessoas; 0 significa sem limite')
-            .setRequired(false)
-            .setMinValue(0)
-            .setMaxValue(99)
-        )
+        .setDescription('Cria uma call "Suporte Call" sem limite vinculada ao ticket atual')
     ),
 
   new SlashCommandBuilder()
