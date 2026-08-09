@@ -1,11 +1,13 @@
 import { VoiceChannel, VoiceState } from 'discord.js';
 
 const GENERAL_CALL_TIMEOUT_MS = 60_000;
+const EMPTY_CALL_RECHECK_MS = 750;
 
 interface GeneralCallState {
   channel: VoiceChannel;
   used: boolean;
   firstJoinTimer: NodeJS.Timeout;
+  emptyCheckTimer?: NodeJS.Timeout;
 }
 
 const generalCalls = new Map<string, GeneralCallState>();
@@ -51,6 +53,8 @@ export function handleVoiceStateUpdate(
     if (joinedCall) {
       joinedCall.used = true;
       clearTimeout(joinedCall.firstJoinTimer);
+      clearTimeout(joinedCall.emptyCheckTimer);
+      joinedCall.emptyCheckTimer = undefined;
     }
   }
 
@@ -59,9 +63,24 @@ export function handleVoiceStateUpdate(
   const leftCall = generalCalls.get(leftCallId);
   if (!leftCall || leftCall.used === false) return;
 
-  if (leftCall.channel.members.size === 0) {
-    deleteGeneralCall(leftCallId, 'a call ficou vazia após ter sido usada');
-  }
+  // O VoiceStateUpdate pode chegar antes de o cache de membros do canal ser
+  // atualizado. Rechecamos depois que o Discord.js terminar essa atualização.
+  clearTimeout(leftCall.emptyCheckTimer);
+  leftCall.emptyCheckTimer = setTimeout(() => {
+    const currentCall = generalCalls.get(leftCallId);
+    if (!currentCall || !currentCall.used) return;
+
+    const hasMembers =
+      currentCall.channel.members.size > 0 ||
+      [...currentCall.channel.guild.voiceStates.cache.values()].some(
+        (state) => state.channelId === leftCallId,
+      );
+
+    if (!hasMembers) {
+      deleteGeneralCall(leftCallId, 'a call ficou vazia após ter sido usada');
+    }
+  }, EMPTY_CALL_RECHECK_MS);
+  leftCall.emptyCheckTimer.unref();
 }
 
 function deleteGeneralCall(channelId: string, reason: string): void {
@@ -70,6 +89,7 @@ function deleteGeneralCall(channelId: string, reason: string): void {
 
   generalCalls.delete(channelId);
   clearTimeout(state.firstJoinTimer);
+  clearTimeout(state.emptyCheckTimer);
 
   state.channel
     .delete(`Call geral excluída: ${reason}`)
