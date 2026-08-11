@@ -6,32 +6,45 @@ import {
 } from 'discord.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { getConfig } from '../config.js';
 
 const LOCAL_BANNER = join(process.cwd(), 'assets', 'banner-boas-vindas.png');
 
 export async function handleWelcome(member: GuildMember): Promise<void> {
-  // ID do canal de testes do seu servidor
-  const channelId = '1481456467759468556';
+  const channelId = process.env.WELCOME_CHANNEL_ID;
 
-  const channel = member.guild.channels.cache.get(channelId);
-  if (!channel || !(channel instanceof TextChannel)) {
+  const isValidSnowflake = (v: string | undefined) => /^\d{17,20}$/.test(v ?? '');
+  if (!isValidSnowflake(channelId)) {
     console.warn(
-      `[Welcome] Canal ${channelId} não encontrado ou não é de texto.`
+      `[Welcome] WELCOME_CHANNEL_ID inválido ou não configurado: "${channelId}". ` +
+      'Configure com o ID numérico do canal e reinicie o bot.'
     );
     return;
   }
 
+  const channel = member.guild.channels.cache.get(channelId!);
+  if (!channel || !(channel instanceof TextChannel)) {
+    console.warn(
+      `[Welcome] Canal ${channelId} não encontrado ou não é de texto. ` +
+      'Verifique se o bot tem permissão de visualizar e enviar mensagens nesse canal.'
+    );
+    return;
+  }
+
+  const config      = getConfig();
   const guildName   = member.guild.name;
   const memberCount = member.guild.memberCount;
   const avatarUrl   = member.user.displayAvatarURL({ size: 512, extension: 'png' });
 
-  // Texto idêntico ao da primeira mensagem do print (da Perséfone)
-  const description = 
-    `Olá player novo!! Muito bom ter mais um Noob- ops, jogador conosco ✨❤️\n\n` +
-    `${member} acabou de entrar!\n` +
-    `Você é o nosso **${memberCount}º** membro! 🐾`;
+  // Substitui os placeholders no texto configurável
+  const description = config.welcome.text
+    .replace(/\{membro\}/g,   `${member}`)
+    .replace(/\{servidor\}/g, guildName)
+    .replace(/\{contagem\}/g, String(memberCount));
 
-  const useLocalBanner = existsSync(LOCAL_BANNER);
+  // Decide a imagem: URL externa configurada > banner local > nenhuma
+  const externalUrl = config.welcome.imageUrl.trim();
+  const useLocalBanner = !externalUrl && existsSync(LOCAL_BANNER);
 
   const embed = new EmbedBuilder()
     .setColor(0x5865F2)
@@ -41,10 +54,12 @@ export async function handleWelcome(member: GuildMember): Promise<void> {
     })
     .setDescription(description)
     .setThumbnail(avatarUrl)
-    .setFooter({ text: `❗ ${guildName} ❗ · Pet do GG` })
+    .setFooter({ text: `${guildName} · Pet do GG` })
     .setTimestamp();
 
-  if (useLocalBanner) {
+  if (externalUrl) {
+    embed.setImage(externalUrl);
+  } else if (useLocalBanner) {
     embed.setImage('attachment://banner-boas-vindas.png');
   }
 
@@ -53,7 +68,7 @@ export async function handleWelcome(member: GuildMember): Promise<void> {
     : [];
 
   await channel.send({
-    content: `Bem-vindo(a) ao ❗ **${guildName}** ❗ , ${member}!`,
+    content: `Bem-vindo(a) ao **${guildName}**, ${member}!`,
     embeds:  [embed],
     files,
   });
