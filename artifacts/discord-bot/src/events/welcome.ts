@@ -10,20 +10,41 @@ import { getConfig } from '../config.js';
 
 const LOCAL_BANNER = join(process.cwd(), 'assets', 'banner-boas-vindas.png');
 
-// ─── Trava anti-duplicação / clonagem ─────────────────────────────────────────
-// Evita que eventos disparados em sequência enviem a mesma mensagem de boas-vindas.
-const welcomeLocks = new Set<string>();
+// ─── Trava anti-duplicação ────────────────────────────────────────────────
+// Garante que, mesmo se o evento "membro entrou" disparar mais de uma vez
+// para a mesma pessoa (bug comum quando o listener é registrado em
+// duplicidade, ou o bot reconecta/reprocessa o evento), a mensagem de
+// boas-vindas só é enviada UMA VEZ por pessoa a cada entrada no servidor.
+const recentlyWelcomed = new Map<string, number>();
+const DEDUPE_WINDOW_MS = 60_000; // 1 minuto de "proteção" após cada boas-vindas
 
-export async function handleWelcome(member: GuildMember): Promise<void> {
-  // Se o membro já está sendo processado ou recebeu boas-vindas nos últimos segundos, cancela.
-  if (welcomeLocks.has(member.id)) {
-    console.warn(`[Welcome] Evento duplicado ignorado para o membro: ${member.user.tag} (${member.id})`);
-    return;
+function alreadyWelcomedRecently(key: string): boolean {
+  const last = recentlyWelcomed.get(key);
+  const now = Date.now();
+
+  // Limpa entradas antigas de vez em quando pra não crescer pra sempre
+  if (recentlyWelcomed.size > 500) {
+    for (const [id, timestamp] of recentlyWelcomed) {
+      if (now - timestamp > DEDUPE_WINDOW_MS) recentlyWelcomed.delete(id);
+    }
   }
 
-  // Trava o ID do membro por 10 segundos
-  welcomeLocks.add(member.id);
-  setTimeout(() => welcomeLocks.delete(member.id), 10_000);
+  if (last && now - last < DEDUPE_WINDOW_MS) {
+    return true;
+  }
+
+  recentlyWelcomed.set(key, now);
+  return false;
+}
+
+export async function handleWelcome(member: GuildMember): Promise<void> {
+  const dedupeKey = `${member.guild.id}:${member.id}`;
+  if (alreadyWelcomedRecently(dedupeKey)) {
+    console.warn(
+      `[Welcome] Ignorando chamada duplicada de boas-vindas para ${member.user.username} (${member.id}).`
+    );
+    return;
+  }
 
   const channelId = process.env.WELCOME_CHANNEL_ID;
 
@@ -81,9 +102,15 @@ export async function handleWelcome(member: GuildMember): Promise<void> {
     ? [new AttachmentBuilder(LOCAL_BANNER, { name: 'banner-boas-vindas.png' })]
     : [];
 
-  await channel.send({
-    content: `Bem-vindo(a) ao **${guildName}**, ${member}!`,
-    embeds:  [embed],
-    files,
-  });
+  try {
+    await channel.send({
+      content: `Bem-vindo(a) ao **${guildName}**, ${member}!`,
+      embeds:  [embed],
+      files,
+    });
+  } catch (error) {
+    // Se der erro no envio, libera a trava pra permitir tentar de novo depois
+    recentlyWelcomed.delete(dedupeKey);
+    console.error(`[Welcome] Erro ao enviar boas-vindas para ${member.user.username}:`, error);
+  }
 }
