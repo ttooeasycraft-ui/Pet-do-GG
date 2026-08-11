@@ -41,10 +41,15 @@ export async function handleWelcome(member: GuildMember): Promise<void> {
   const dedupeKey = `${member.guild.id}:${member.id}`;
   if (alreadyWelcomedRecently(dedupeKey)) {
     console.warn(
-      `[Welcome] Ignorando chamada duplicada de boas-vindas para ${member.user.username} (${member.id}).`
+      `[Welcome] Ignorando chamada duplicada (memória) de boas-vindas para ${member.user.username} (${member.id}).`
     );
     return;
   }
+
+  // Pequeno atraso (debounce) antes de processar de verdade: se o evento
+  // disparar de novo pra mesma pessoa quase ao mesmo tempo, a trava acima já
+  // vai bloquear a segunda chamada antes dela sequer chegar aqui.
+  await new Promise((resolve) => setTimeout(resolve, 6_000));
 
   const channelId = process.env.WELCOME_CHANNEL_ID;
 
@@ -64,6 +69,32 @@ export async function handleWelcome(member: GuildMember): Promise<void> {
       'Verifique se o bot tem permissão de visualizar e enviar mensagens nesse canal.'
     );
     return;
+  }
+
+  // ─── Segunda camada de proteção ──────────────────────────────────────────
+  // Além da trava em memória (que se perde se o bot reiniciar), checa
+  // diretamente no histórico do canal se já existe uma mensagem de
+  // boas-vindas recente mencionando esse membro. Isso protege até contra o
+  // caso raro do bot cair/reiniciar bem no meio do processamento do evento.
+  try {
+    const recentMessages = await channel.messages.fetch({ limit: 10 });
+    const alreadyPostedInChannel = recentMessages.some((msg) => {
+      const isRecent = Date.now() - msg.createdTimestamp < DEDUPE_WINDOW_MS;
+      const mentionsMember = msg.mentions.users.has(member.id) || msg.content.includes(member.id);
+      const isFromThisBot = msg.author.id === member.client.user?.id;
+      return isRecent && mentionsMember && isFromThisBot;
+    });
+
+    if (alreadyPostedInChannel) {
+      console.warn(
+        `[Welcome] Ignorando duplicata (histórico do canal) para ${member.user.username} (${member.id}).`
+      );
+      return;
+    }
+  } catch (error) {
+    // Se a checagem do histórico falhar por algum motivo, não bloqueia o
+    // fluxo normal — só segue com a trava em memória mesmo.
+    console.warn('[Welcome] Não foi possível checar histórico do canal:', error);
   }
 
   const config      = getConfig();
