@@ -10,7 +10,21 @@ import { getConfig } from '../config.js';
 
 const LOCAL_BANNER = join(process.cwd(), 'assets', 'banner-boas-vindas.png');
 
+// ─── Trava anti-duplicação / clonagem ─────────────────────────────────────────
+// Evita que eventos disparados em sequência enviem a mesma mensagem de boas-vindas.
+const welcomeLocks = new Set<string>();
+
 export async function handleWelcome(member: GuildMember): Promise<void> {
+  // Se o membro já está sendo processado ou recebeu boas-vindas nos últimos segundos, cancela.
+  if (welcomeLocks.has(member.id)) {
+    console.warn(`[Welcome] Evento duplicado ignorado para o membro: ${member.user.tag} (${member.id})`);
+    return;
+  }
+
+  // Trava o ID do membro por 10 segundos
+  welcomeLocks.add(member.id);
+  setTimeout(() => welcomeLocks.delete(member.id), 10_000);
+
   const channelId = process.env.WELCOME_CHANNEL_ID;
 
   const isValidSnowflake = (v: string | undefined) => /^\d{17,20}$/.test(v ?? '');
