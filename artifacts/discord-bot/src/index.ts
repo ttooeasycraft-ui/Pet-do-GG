@@ -25,6 +25,7 @@ import { handleEditar, handleEditarModal } from './commands/editar.js';
 import { handleSuggestion, handleUserAvatar, handleUserInfo } from './commands/user.js';
 import { SUGGESTIONS_CHANNEL_ID } from './constants.js';
 import { handleVoiceStateUpdate } from './events/voice.js';
+import { handleMatchmakingButton } from './commands/matchmaking.js';
 
 // Força stdout sem buffer para que os logs apareçam no workflow
 process.stdout.write('');
@@ -132,6 +133,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
     // ── Botões ────────────────────────────────────────────────────────────────
     if (interaction.isButton()) {
+      if (await handleMatchmakingButton(interaction)) {
+        return;
+      }
+
       if (interaction.customId === 'ticket_close') {
         await handleTicketClose(interaction);
       } else if (interaction.customId === 'ticket_voice') {

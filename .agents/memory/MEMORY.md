@@ -1,0 +1,1 @@
+- [Painéis Discord experimentais](discord-test-panels.md) — componentes só funcionam com um handler persistente; protótipos devem ser limitados ao canal e nunca usar menções públicas.
