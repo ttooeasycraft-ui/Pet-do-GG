@@ -32,9 +32,6 @@ export const SUGGESTIONS_CHANNEL_ID = '1535487520132042852';
 /** Canal privado onde o protótipo de matchmaking pode ser testado. */
 export const MATCHMAKING_TEST_CHANNEL_ID = '1546484925425917972';
 
-/** Canal onde o protótipo não oficial da roleta será demonstrado. */
-export const ROULETTE_TEST_CHANNEL_ID = '1490941756353810446';
-
 /**
  * Verifica se a interação veio de alguém com cargo de staff.
  * Lida com os dois tipos que Discord.js pode retornar:

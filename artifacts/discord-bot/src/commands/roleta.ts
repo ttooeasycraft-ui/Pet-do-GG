@@ -14,7 +14,6 @@ import {
 } from 'discord.js';
 import {
   interactionHasStaffRole,
-  ROULETTE_TEST_CHANNEL_ID,
 } from '../constants.js';
 
 const MAX_OPTIONS = 30;
@@ -47,8 +46,6 @@ function parseOptions(raw: string): string[] {
 function canUseRoulette(
   interaction: RouletteInteraction
 ): boolean {
-  if (interaction.channelId !== ROULETTE_TEST_CHANNEL_ID) return false;
-
   const member = interaction.member as Parameters<typeof interactionHasStaffRole>[0];
   const isOwner = interaction.guild?.ownerId === interaction.user.id;
   return isOwner || interactionHasStaffRole(member);
@@ -59,8 +56,7 @@ async function rejectOutsideTest(
 ): Promise<void> {
   await interaction.reply({
     content:
-      `Esse protótipo só pode ser usado no canal de teste <#${ROULETTE_TEST_CHANNEL_ID}> ` +
-      'e pela equipe autorizada.',
+      'A roleta só pode ser usada pela dona do servidor ou pela equipe autorizada.',
     flags: MessageFlags.Ephemeral,
   });
 }
@@ -92,12 +88,12 @@ function buildRouletteEmbed(
 
   return new EmbedBuilder()
     .setColor(0x8b5cf6)
-    .setTitle('🎡 Roleta · protótipo de teste')
+    .setTitle('🎡 Roleta do Pet do GG')
     .setDescription(
       `${status}\n\n**Opções cadastradas (${options.length}/${MAX_OPTIONS}):**\n${optionList}`
     )
     .setFooter({
-      text: 'Versão não oficial · teste de animação · Pet do GG',
+      text: 'Roleta oficial · Pet do GG',
     });
 }
 
@@ -115,7 +111,7 @@ function buildResultEmbed(
 function buildOptionsModal(): ModalBuilder {
   return new ModalBuilder()
     .setCustomId('roleta_opcoes')
-    .setTitle('Criar roleta de teste')
+    .setTitle('Criar roleta')
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
@@ -159,7 +155,7 @@ export async function handleRouletteModal(
 
   if (options.length > MAX_OPTIONS) {
     await interaction.reply({
-      content: `A roleta de teste aceita no máximo **${MAX_OPTIONS} opções**.`,
+      content: `A roleta aceita no máximo **${MAX_OPTIONS} opções**.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -167,7 +163,7 @@ export async function handleRouletteModal(
 
   if (!(interaction.channel instanceof TextChannel)) {
     await interaction.reply({
-      content: 'Não consegui encontrar o canal de teste.',
+      content: 'Não consegui encontrar o canal desta roleta.',
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -180,7 +176,7 @@ export async function handleRouletteModal(
   rouletteStates.set(message.id, { options, spinning: false });
 
   await interaction.reply({
-    content: '✅ Protótipo criado neste canal. Agora é só clicar em **Girar roleta**.',
+    content: '✅ Roleta criada neste canal. Agora é só clicar em **Girar roleta**.',
     flags: MessageFlags.Ephemeral,
   });
 }

@@ -116,7 +116,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('roleta')
-    .setDescription('Cria uma roleta animada de teste (máximo de 30 opções)'),
+    .setDescription('Cria uma roleta animada (máximo de 30 opções)'),
 
 ].map((cmd) => cmd.toJSON());
 
