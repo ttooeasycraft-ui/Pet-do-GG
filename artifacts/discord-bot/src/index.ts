@@ -26,6 +26,11 @@ import { handleSuggestion, handleUserAvatar, handleUserInfo } from './commands/u
 import { SUGGESTIONS_CHANNEL_ID } from './constants.js';
 import { handleVoiceStateUpdate } from './events/voice.js';
 import { handleMatchmakingButton } from './commands/matchmaking.js';
+import {
+  handleRoulette,
+  handleRouletteButton,
+  handleRouletteModal,
+} from './commands/roleta.js';
 
 // Força stdout sem buffer para que os logs apareçam no workflow
 process.stdout.write('');
@@ -94,6 +99,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         case 'ticket-painel': await handleTicketSetup(interaction);  break;
         case 'editar-texto':  await handleEditar(interaction);       break;
         case 'sugerir':       await handleSuggestion(interaction, SUGGESTIONS_CHANNEL_ID); break;
+        case 'roleta':        await handleRoulette(interaction);     break;
         case 'user': {
           const subcommand = interaction.options.getSubcommand();
           if (subcommand === 'avatar') await handleUserAvatar(interaction);
@@ -119,6 +125,8 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         await handleEditarModal(interaction);
       } else if (interaction.customId === 'create_call_modal') {
         await handleCreateCallModal(interaction);
+      } else if (interaction.customId === 'roleta_opcoes') {
+        await handleRouletteModal(interaction);
       }
       return;
     }
@@ -133,6 +141,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
     // ── Botões ────────────────────────────────────────────────────────────────
     if (interaction.isButton()) {
+      if (await handleRouletteButton(interaction)) {
+        return;
+      }
+
       if (await handleMatchmakingButton(interaction)) {
         return;
       }

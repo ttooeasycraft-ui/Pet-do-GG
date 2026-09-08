@@ -114,6 +114,10 @@ const commands = [
         .setMaxLength(1000)
     ),
 
+  new SlashCommandBuilder()
+    .setName('roleta')
+    .setDescription('Cria uma roleta animada de teste (máximo de 30 opções)'),
+
 ].map((cmd) => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);

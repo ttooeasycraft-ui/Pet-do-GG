@@ -14,3 +14,9 @@ O fluxo de boas-vindas existente deve permanecer direto e sem debounce ou consul
 **Why:** A proteção adicional de duplicação atrasou/bloqueou o comportamento de boas-vindas que já estava aprovado pelo usuário, então foi revertida sem remover o matchmaking.
 
 **How to apply:** Ao adicionar recursos de teste, não refatorar `events/welcome.ts`; se uma mudança ali for realmente necessária, comparar com a última versão aprovada e validar o envio antes de manter.
+
+Protótipos de comandos Discord podem ser registrados no servidor sem serem lançamentos oficiais quando o handler restringe uso por canal e por cargo/dona; a autorização deve ser confirmada no próprio fluxo antes de ampliar o escopo.
+
+**Why:** A roleta foi criada para demonstração antes de virar recurso oficial, com limite de opções, animação temporária e estado apenas em memória.
+
+**How to apply:** Para novos protótipos, registrar o comando no servidor, limitar o canal de teste, responder sem menções amplas e deixar claro no painel que a versão ainda é experimental.
