@@ -140,13 +140,13 @@ const commands = [
         .setDescription('Quantidade de tempo sem resposta')
         .setMinValue(1)
         .setMaxValue(100)
-        .setRequired(true)
+        .setRequired(false)
     )
     .addStringOption((opt) =>
       opt
         .setName('unidade')
         .setDescription('Unidade do prazo')
-        .setRequired(true)
+        .setRequired(false)
         .addChoices(
           { name: 'Segundos', value: 'segundos' },
           { name: 'Minutos', value: 'minutos' },

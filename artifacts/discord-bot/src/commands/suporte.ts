@@ -65,8 +65,8 @@ export async function handleSupportTimeout(
   }
 
   const selectedChannel = interaction.options.getChannel('canal', true);
-  const amount = interaction.options.getInteger('tempo', true);
-  const unit = interaction.options.getString('unidade', true) as SupportTimeUnit;
+  const amount = interaction.options.getInteger('tempo');
+  const rawUnit = interaction.options.getString('unidade');
 
   if (selectedChannel.type !== ChannelType.GuildText) {
     await interaction.reply({
@@ -86,6 +86,29 @@ export async function handleSupportTimeout(
     return;
   }
 
+  if (amount === null && rawUnit === null) {
+    const previous = getSupportTimeout(channel.id);
+    removeSupportTimeout(channel.id);
+    cancelSupportTimer(channel.id);
+
+    await interaction.reply({
+      content: previous
+        ? `✅ Limite removido de <#${channel.id}>. O ticket ficará aberto até o fechamento manual.`
+        : `ℹ️ <#${channel.id}> já não tinha limite automático configurado.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (amount === null || rawUnit === null) {
+    await interaction.reply({
+      content: 'Para configurar o limite, informe **tempo** e **unidade**. Para remover, deixe os dois vazios.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const unit = rawUnit as SupportTimeUnit;
   const timeoutMs = durationToMilliseconds(amount, unit);
   setSupportTimeout(channel.id, timeoutMs, interaction.user.id);
   scheduleSupportTimeout(interaction.client, channel.id);
@@ -129,8 +152,7 @@ function scheduleSupportTimeout(client: Client, channelId: string): void {
   const current = getSupportTimeout(channelId);
   if (!current) return;
 
-  const previousTimer = timers.get(channelId);
-  if (previousTimer) clearTimeout(previousTimer);
+  cancelSupportTimer(channelId);
 
   const remaining = current.dueAt - Date.now();
   const delay = Math.min(Math.max(remaining, 1), MAX_TIMER_DELAY);
@@ -140,6 +162,13 @@ function scheduleSupportTimeout(client: Client, channelId: string): void {
   }, delay);
   timer.unref();
   timers.set(channelId, timer);
+}
+
+function cancelSupportTimer(channelId: string): void {
+  const timer = timers.get(channelId);
+  if (!timer) return;
+  clearTimeout(timer);
+  timers.delete(channelId);
 }
 
 async function expireSupportTimeout(client: Client, channelId: string): Promise<void> {
