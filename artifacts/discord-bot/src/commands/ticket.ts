@@ -31,6 +31,7 @@ import {
   getTicketRateLimit,
   recordTicketClosed,
   recordTicketOpened,
+  removeSupportTimeout,
   setTicketPanelMessage,
 } from '../config.js';
 import { buildPanelEmbed, buildPanelMenu } from './editar.js';
@@ -54,13 +55,13 @@ function formatDuration(milliseconds: number): string {
   return `${minutes}min`;
 }
 
-function isTicketChannel(channel: unknown): channel is TextChannel {
+export function isTicketChannel(channel: unknown): channel is TextChannel {
   return Boolean(
     channel instanceof TextChannel && channel.topic?.startsWith('Ticket de ')
   );
 }
 
-function ticketOwnerId(channel: TextChannel): string | null {
+export function ticketOwnerId(channel: TextChannel): string | null {
   const match = channel.topic?.match(
     /—\s*(\d{17,20})(?:\s+—\s+voice:\d{17,20})?$/
   );
@@ -351,8 +352,6 @@ export async function handleTicketClose(
   interaction: ButtonInteraction
 ): Promise<void> {
   const channel = interaction.channel;
-  const ownerId = channel instanceof TextChannel ? ticketOwnerId(channel) : null;
-  const voiceId = channel instanceof TextChannel ? ticketVoiceId(channel) : null;
 
   await interaction.reply({
     embeds: [
@@ -365,20 +364,36 @@ export async function handleTicketClose(
   });
 
   if (channel instanceof TextChannel) {
-    await deleteTicketVoice(channel.guild, voiceId).catch((error) => {
-      console.error(`[Ticket] Erro ao excluir a call vinculada ${voiceId}:`, error);
+    removeSupportTimeout(channel.id);
+    await closeTicketChannel(
+      channel,
+      interaction.user.id,
+      `Ticket fechado por ${interaction.user.username}`,
+    );
+  }
+}
+
+export async function closeTicketChannel(
+  channel: TextChannel,
+  closedById: string,
+  deleteReason: string,
+): Promise<void> {
+  const ownerId = ticketOwnerId(channel);
+  const voiceId = ticketVoiceId(channel);
+
+  await deleteTicketVoice(channel.guild, voiceId).catch((error) => {
+    console.error(`[Ticket] Erro ao excluir a call vinculada ${voiceId}:`, error);
+  });
+  if (voiceId) {
+    await setTicketVoiceId(channel, null).catch((error) => {
+      console.error(`[Ticket] Erro ao limpar a referência da call ${voiceId}:`, error);
     });
-    if (voiceId) {
-      await setTicketVoiceId(channel, null).catch((error) => {
-        console.error(`[Ticket] Erro ao limpar a referência da call ${voiceId}:`, error);
-      });
-    }
   }
 
-  if (ownerId) recordTicketClosed(ownerId, interaction.user.id);
+  if (ownerId) recordTicketClosed(ownerId, closedById);
   setTimeout(async () => {
-    await channel?.delete(`Ticket fechado por ${interaction.user.username}`).catch(() => null);
-  }, 5_000);
+    await channel.delete(deleteReason).catch(() => null);
+  }, 5_000).unref();
 }
 
 export async function handleTicketVoiceButton(

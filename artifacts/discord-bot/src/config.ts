@@ -36,6 +36,13 @@ export interface BotConfig {
       opened: Array<{ userId: string; at: number }>;
       closed: Array<{ userId: string; at: number; closedBy: string }>;
     };
+    /** Prazos de fechamento automático configurados por canal de ticket. */
+    supportTimeouts: Array<{
+      channelId: string;
+      timeoutMs: number;
+      configuredBy: string;
+      dueAt: number;
+    }>;
   };
 }
 
@@ -55,13 +62,14 @@ export const DEFAULTS: BotConfig = {
       opened: [],
       closed: [],
     },
+    supportTimeouts: [],
   },
 };
 
 let _config: BotConfig = deepMerge(DEFAULTS, {});
 
 function deepMerge(defaults: BotConfig, saved: Partial<BotConfig>): BotConfig {
-  const savedTicket = saved.ticket ?? {};
+  const savedTicket = (saved.ticket ?? {}) as Partial<BotConfig['ticket']>;
   const savedStats =
     (savedTicket as Partial<BotConfig['ticket']>).stats as
       | Partial<BotConfig['ticket']['stats']>
@@ -75,6 +83,13 @@ function deepMerge(defaults: BotConfig, saved: Partial<BotConfig>): BotConfig {
         opened: Array.isArray(savedStats?.opened) ? savedStats.opened : [],
         closed: Array.isArray(savedStats?.closed) ? savedStats.closed : [],
       },
+      supportTimeouts: (savedTicket.supportTimeouts ?? []).filter(
+        (entry) =>
+          typeof entry.channelId === 'string' &&
+          typeof entry.timeoutMs === 'number' &&
+          typeof entry.configuredBy === 'string' &&
+          typeof entry.dueAt === 'number',
+      ),
     },
   };
 }
@@ -115,6 +130,37 @@ export function setTicketPanelText(text: string, imageUrl: string): void {
 export function setTicketPanelMessage(messageId: string, channelId: string): void {
   _config.ticket.panelMessageId = messageId;
   _config.ticket.panelChannelId = channelId;
+  persist();
+}
+
+export function getSupportTimeout(channelId: string): BotConfig['ticket']['supportTimeouts'][number] | null {
+  return _config.ticket.supportTimeouts.find((entry) => entry.channelId === channelId) ?? null;
+}
+
+export function setSupportTimeout(
+  channelId: string,
+  timeoutMs: number,
+  configuredBy: string,
+  dueAt = Date.now() + timeoutMs,
+): void {
+  const next = { channelId, timeoutMs, configuredBy, dueAt };
+  const index = _config.ticket.supportTimeouts.findIndex((entry) => entry.channelId === channelId);
+  if (index >= 0) _config.ticket.supportTimeouts[index] = next;
+  else _config.ticket.supportTimeouts.push(next);
+  persist();
+}
+
+export function refreshSupportTimeout(channelId: string, now = Date.now()): void {
+  const entry = getSupportTimeout(channelId);
+  if (!entry) return;
+  entry.dueAt = now + entry.timeoutMs;
+  persist();
+}
+
+export function removeSupportTimeout(channelId: string): void {
+  const next = _config.ticket.supportTimeouts.filter((entry) => entry.channelId !== channelId);
+  if (next.length === _config.ticket.supportTimeouts.length) return;
+  _config.ticket.supportTimeouts = next;
   persist();
 }
 

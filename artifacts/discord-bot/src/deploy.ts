@@ -2,7 +2,13 @@
  * Registra os slash commands no servidor (guild).
  * Execute com: pnpm --filter @workspace/discord-bot run deploy
  */
-import { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import {
+  ChannelType,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+} from 'discord.js';
 
 const token   = process.env.DISCORD_BOT_TOKEN;
 const guildId = process.env.GUILD_ID;
@@ -117,6 +123,39 @@ const commands = [
   new SlashCommandBuilder()
     .setName('roleta')
     .setDescription('Cria uma roleta animada (máximo de 30 opções)'),
+
+  new SlashCommandBuilder()
+    .setName('tempo-suporte')
+    .setDescription('Define quando um ticket fecha por falta de resposta')
+    .addChannelOption((opt) =>
+      opt
+        .setName('canal')
+        .setDescription('Canal do ticket que receberá o prazo')
+        .addChannelTypes(ChannelType.GuildText)
+        .setRequired(true)
+    )
+    .addIntegerOption((opt) =>
+      opt
+        .setName('tempo')
+        .setDescription('Quantidade de tempo sem resposta')
+        .setMinValue(1)
+        .setMaxValue(100)
+        .setRequired(true)
+    )
+    .addStringOption((opt) =>
+      opt
+        .setName('unidade')
+        .setDescription('Unidade do prazo')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Segundos', value: 'segundos' },
+          { name: 'Minutos', value: 'minutos' },
+          { name: 'Horas', value: 'horas' },
+          { name: 'Dias', value: 'dias' },
+          { name: 'Meses (30 dias)', value: 'meses' },
+          { name: 'Anos (365 dias)', value: 'anos' },
+        )
+    ),
 
 ].map((cmd) => cmd.toJSON());
 

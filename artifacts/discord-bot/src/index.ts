@@ -4,6 +4,7 @@ import {
   Events,
   Interaction,
   GuildMember,
+  Message,
   MessageFlags,
 } from 'discord.js';
 
@@ -21,6 +22,11 @@ import {
   handleTicketVoice,
   handleTicketVoiceButton,
 } from './commands/ticket.js';
+import {
+  handleSupportMessage,
+  handleSupportTimeout,
+  initializeSupportTimeouts,
+} from './commands/suporte.js';
 import { handleEditar, handleEditarModal } from './commands/editar.js';
 import { handleSuggestion, handleUserAvatar, handleUserInfo } from './commands/user.js';
 import { SUGGESTIONS_CHANNEL_ID } from './constants.js';
@@ -71,6 +77,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildVoiceStates,
   ],
 });
@@ -78,9 +85,15 @@ const client = new Client({
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Pet do GG online como: ${c.user.username}`);
   console.log(`🔗 Servidores conectados: ${c.guilds.cache.size}`);
+  initializeSupportTimeouts(c).catch((err) =>
+    console.error('[SupportTimeout] Erro ao carregar prazos:', err)
+  );
 });
 
 client.on(Events.VoiceStateUpdate, handleVoiceStateUpdate);
+client.on(Events.MessageCreate, (message: Message) => {
+  handleSupportMessage(message);
+});
 
 // ── Boas-vindas ───────────────────────────────────────────────────────────────
 client.on(Events.GuildMemberAdd, (member: GuildMember) => {
@@ -100,6 +113,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         case 'editar-texto':  await handleEditar(interaction);       break;
         case 'sugerir':       await handleSuggestion(interaction, SUGGESTIONS_CHANNEL_ID); break;
         case 'roleta':        await handleRoulette(interaction);     break;
+        case 'tempo-suporte': await handleSupportTimeout(interaction); break;
         case 'user': {
           const subcommand = interaction.options.getSubcommand();
           if (subcommand === 'avatar') await handleUserAvatar(interaction);
