@@ -17,7 +17,7 @@ import {
   setChatXpRoleId,
 } from '../config.js';
 
-const CHAT_XP_PER_MESSAGE = 5;
+const CHAT_XP_PER_MESSAGE = 1;
 const CHAT_XP_COOLDOWN_MS = 60_000;
 const MIN_MESSAGE_LENGTH = 3;
 
