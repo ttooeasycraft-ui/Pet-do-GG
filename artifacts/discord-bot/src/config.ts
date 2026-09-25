@@ -50,6 +50,14 @@ export interface BotConfig {
     /** IDs dos cargos competitivos criados no servidor. */
     roleIds: Record<string, string>;
   };
+  chatXp: {
+    /** XP acumulado por mensagens válidas, separado por membro. */
+    memberXp: Record<string, number>;
+    /** Último momento em que cada membro recebeu XP de chat. */
+    lastAwardAt: Record<string, number>;
+    /** IDs dos cargos de progressão do chat. */
+    roleIds: Record<string, string>;
+  };
 }
 
 export const DEFAULTS: BotConfig = {
@@ -72,6 +80,11 @@ export const DEFAULTS: BotConfig = {
   },
   voiceXp: {
     memberSeconds: {},
+    roleIds: {},
+  },
+  chatXp: {
+    memberXp: {},
+    lastAwardAt: {},
     roleIds: {},
   },
 };
@@ -120,6 +133,46 @@ function deepMerge(defaults: BotConfig, saved: Partial<BotConfig>): BotConfig {
         typeof saved.voiceXp.roleIds === 'object'
           ? Object.fromEntries(
               Object.entries(saved.voiceXp.roleIds).filter(
+                ([level, roleId]) =>
+                  typeof level === 'string' &&
+                  typeof roleId === 'string' &&
+                  /^\d{17,20}$/.test(roleId),
+              ),
+            )
+          : {},
+    },
+    chatXp: {
+      memberXp:
+        saved.chatXp?.memberXp &&
+        typeof saved.chatXp.memberXp === 'object'
+          ? Object.fromEntries(
+              Object.entries(saved.chatXp.memberXp).filter(
+                ([userId, xp]) =>
+                  /^\d{17,20}$/.test(userId) &&
+                  typeof xp === 'number' &&
+                  Number.isFinite(xp) &&
+                  xp >= 0,
+              ),
+            )
+          : {},
+      lastAwardAt:
+        saved.chatXp?.lastAwardAt &&
+        typeof saved.chatXp.lastAwardAt === 'object'
+          ? Object.fromEntries(
+              Object.entries(saved.chatXp.lastAwardAt).filter(
+                ([userId, timestamp]) =>
+                  /^\d{17,20}$/.test(userId) &&
+                  typeof timestamp === 'number' &&
+                  Number.isFinite(timestamp) &&
+                  timestamp >= 0,
+              ),
+            )
+          : {},
+      roleIds:
+        saved.chatXp?.roleIds &&
+        typeof saved.chatXp.roleIds === 'object'
+          ? Object.fromEntries(
+              Object.entries(saved.chatXp.roleIds).filter(
                 ([level, roleId]) =>
                   typeof level === 'string' &&
                   typeof roleId === 'string' &&
@@ -221,6 +274,43 @@ export function getVoiceXpRoleId(level: string): string | null {
 export function setVoiceXpRoleId(level: string, roleId: string): void {
   _config.voiceXp.roleIds[level] = roleId;
   persist();
+}
+
+export function getChatXp(userId: string): number {
+  return _config.chatXp.memberXp[userId] ?? 0;
+}
+
+export function addChatXp(userId: string, xp: number): number {
+  const safeXp = Math.max(0, Math.floor(xp));
+  if (safeXp <= 0) return getChatXp(userId);
+  _config.chatXp.memberXp[userId] = getChatXp(userId) + safeXp;
+  persist();
+  return _config.chatXp.memberXp[userId];
+}
+
+export function getChatXpLastAwardAt(userId: string): number {
+  return _config.chatXp.lastAwardAt[userId] ?? 0;
+}
+
+export function setChatXpLastAwardAt(userId: string, timestamp: number): void {
+  _config.chatXp.lastAwardAt[userId] = timestamp;
+  persist();
+}
+
+export function getChatXpRoleId(level: string): string | null {
+  return _config.chatXp.roleIds[level] ?? null;
+}
+
+export function setChatXpRoleId(level: string, roleId: string): void {
+  _config.chatXp.roleIds[level] = roleId;
+  persist();
+}
+
+export function getChatXpRanking(limit = 10): Array<{ userId: string; xp: number }> {
+  return Object.entries(_config.chatXp.memberXp)
+    .map(([userId, xp]) => ({ userId, xp }))
+    .sort((a, b) => b.xp - a.xp || a.userId.localeCompare(b.userId))
+    .slice(0, limit);
 }
 
 export function getTicketRateLimit(userId: string, now = Date.now()): number {

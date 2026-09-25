@@ -41,6 +41,11 @@ import {
   handleRouletteButton,
   handleRouletteModal,
 } from './commands/roleta.js';
+import { handleRanking } from './commands/ranking.js';
+import {
+  handleChatXpMessage,
+  initializeChatXp,
+} from './events/chat-xp.js';
 
 // Força stdout sem buffer para que os logs apareçam no workflow
 process.stdout.write('');
@@ -95,6 +100,9 @@ client.once(Events.ClientReady, (c) => {
   initializeVoiceXp(c).catch((err) =>
     console.error('[VoiceXP] Erro ao preparar cargos de call:', err)
   );
+  initializeChatXp(c).catch((err) =>
+    console.error('[ChatXP] Erro ao preparar cargos de chat:', err)
+  );
 });
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
@@ -105,6 +113,9 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 });
 client.on(Events.MessageCreate, (message: Message) => {
   handleSupportMessage(message);
+  handleChatXpMessage(message).catch((err) =>
+    console.error('[ChatXP] Erro ao atualizar XP de chat:', err)
+  );
 });
 
 // ── Boas-vindas ───────────────────────────────────────────────────────────────
@@ -126,6 +137,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         case 'sugerir':       await handleSuggestion(interaction, SUGGESTIONS_CHANNEL_ID); break;
         case 'roleta':        await handleRoulette(interaction);     break;
         case 'tempo-suporte': await handleSupportTimeout(interaction); break;
+        case 'ranking':       await handleRanking(interaction);     break;
         case 'user': {
           const subcommand = interaction.options.getSubcommand();
           if (subcommand === 'avatar') await handleUserAvatar(interaction);

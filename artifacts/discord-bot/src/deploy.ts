@@ -157,6 +157,10 @@ const commands = [
         )
     ),
 
+  new SlashCommandBuilder()
+    .setName('ranking')
+    .setDescription('Mostra o ranking individual de XP do chat'),
+
 ].map((cmd) => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
