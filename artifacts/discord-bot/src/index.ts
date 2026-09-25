@@ -31,6 +31,10 @@ import { handleEditar, handleEditarModal } from './commands/editar.js';
 import { handleSuggestion, handleUserAvatar, handleUserInfo } from './commands/user.js';
 import { SUGGESTIONS_CHANNEL_ID } from './constants.js';
 import { handleVoiceStateUpdate } from './events/voice.js';
+import {
+  handleVoiceXpStateUpdate,
+  initializeVoiceXp,
+} from './events/voice-xp.js';
 import { handleMatchmakingButton } from './commands/matchmaking.js';
 import {
   handleRoulette,
@@ -88,9 +92,17 @@ client.once(Events.ClientReady, (c) => {
   initializeSupportTimeouts(c).catch((err) =>
     console.error('[SupportTimeout] Erro ao carregar prazos:', err)
   );
+  initializeVoiceXp(c).catch((err) =>
+    console.error('[VoiceXP] Erro ao preparar cargos de call:', err)
+  );
 });
 
-client.on(Events.VoiceStateUpdate, handleVoiceStateUpdate);
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  handleVoiceStateUpdate(oldState, newState);
+  handleVoiceXpStateUpdate(oldState, newState).catch((err) =>
+    console.error('[VoiceXP] Erro ao atualizar tempo de call:', err)
+  );
+});
 client.on(Events.MessageCreate, (message: Message) => {
   handleSupportMessage(message);
 });

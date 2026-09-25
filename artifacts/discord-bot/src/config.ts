@@ -44,6 +44,12 @@ export interface BotConfig {
       dueAt: number;
     }>;
   };
+  voiceXp: {
+    /** Tempo acumulado em segundos por membro. */
+    memberSeconds: Record<string, number>;
+    /** IDs dos cargos competitivos criados no servidor. */
+    roleIds: Record<string, string>;
+  };
 }
 
 export const DEFAULTS: BotConfig = {
@@ -63,6 +69,10 @@ export const DEFAULTS: BotConfig = {
       closed: [],
     },
     supportTimeouts: [],
+  },
+  voiceXp: {
+    memberSeconds: {},
+    roleIds: {},
   },
 };
 
@@ -90,6 +100,33 @@ function deepMerge(defaults: BotConfig, saved: Partial<BotConfig>): BotConfig {
           typeof entry.configuredBy === 'string' &&
           typeof entry.dueAt === 'number',
       ),
+    },
+    voiceXp: {
+      memberSeconds:
+        saved.voiceXp?.memberSeconds &&
+        typeof saved.voiceXp.memberSeconds === 'object'
+          ? Object.fromEntries(
+              Object.entries(saved.voiceXp.memberSeconds).filter(
+                ([userId, seconds]) =>
+                  /^\d{17,20}$/.test(userId) &&
+                  typeof seconds === 'number' &&
+                  Number.isFinite(seconds) &&
+                  seconds >= 0,
+              ),
+            )
+          : {},
+      roleIds:
+        saved.voiceXp?.roleIds &&
+        typeof saved.voiceXp.roleIds === 'object'
+          ? Object.fromEntries(
+              Object.entries(saved.voiceXp.roleIds).filter(
+                ([level, roleId]) =>
+                  typeof level === 'string' &&
+                  typeof roleId === 'string' &&
+                  /^\d{17,20}$/.test(roleId),
+              ),
+            )
+          : {},
     },
   };
 }
@@ -161,6 +198,28 @@ export function removeSupportTimeout(channelId: string): void {
   const next = _config.ticket.supportTimeouts.filter((entry) => entry.channelId !== channelId);
   if (next.length === _config.ticket.supportTimeouts.length) return;
   _config.ticket.supportTimeouts = next;
+  persist();
+}
+
+export function getVoiceXpSeconds(userId: string): number {
+  return _config.voiceXp.memberSeconds[userId] ?? 0;
+}
+
+export function addVoiceXpSeconds(userId: string, seconds: number): number {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  if (safeSeconds <= 0) return getVoiceXpSeconds(userId);
+  _config.voiceXp.memberSeconds[userId] =
+    getVoiceXpSeconds(userId) + safeSeconds;
+  persist();
+  return _config.voiceXp.memberSeconds[userId];
+}
+
+export function getVoiceXpRoleId(level: string): string | null {
+  return _config.voiceXp.roleIds[level] ?? null;
+}
+
+export function setVoiceXpRoleId(level: string, roleId: string): void {
+  _config.voiceXp.roleIds[level] = roleId;
   persist();
 }
 
