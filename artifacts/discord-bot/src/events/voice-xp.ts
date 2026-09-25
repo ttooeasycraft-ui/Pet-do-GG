@@ -54,6 +54,7 @@ export async function initializeVoiceXp(client: Client): Promise<void> {
           guildId: guild.id,
           joinedAt: Date.now(),
         });
+        await updateVoiceXpRole(voiceState.member);
       }
     }
   }
@@ -81,6 +82,9 @@ export async function handleVoiceXpStateUpdate(
       guildId: guild.id,
       joinedAt: Date.now(),
     });
+    const joinedMember =
+      newState.member ?? await guild.members.fetch(userId).catch(() => null);
+    if (joinedMember) await updateVoiceXpRole(joinedMember);
   }
 }
 
@@ -122,15 +126,25 @@ async function ensureVoiceXpRoles(guild: Guild): Promise<Map<string, Role>> {
 async function finishVoiceSession(guild: Guild, userId: string): Promise<void> {
   const key = sessionKey(guild.id, userId);
   const session = activeSessions.get(key);
-  if (!session) return;
+  const member = await guild.members.fetch(userId).catch(() => null);
+  if (!session) {
+    if (member) await updateVoiceXpRole(member);
+    return;
+  }
 
   activeSessions.delete(key);
   const elapsedSeconds = Math.floor((Date.now() - session.joinedAt) / 1_000);
-  if (elapsedSeconds <= 0) return;
-
   const totalSeconds = addVoiceXpSeconds(userId, elapsedSeconds);
-  const member = await guild.members.fetch(userId).catch(() => null);
   if (member) await updateVoiceXpRole(member, totalSeconds);
+}
+
+export function getVoiceXpLevel(seconds: number): (typeof VOICE_XP_LEVELS)[number] {
+  const totalHours = seconds / 3_600;
+  let achieved: (typeof VOICE_XP_LEVELS)[number] = VOICE_XP_LEVELS[0];
+  for (const level of VOICE_XP_LEVELS) {
+    if (totalHours >= level.thresholdHours) achieved = level;
+  }
+  return achieved;
 }
 
 async function updateVoiceXpRole(
@@ -140,12 +154,7 @@ async function updateVoiceXpRole(
   const roles = roleCache.get(member.guild.id);
   if (!roles) return;
 
-  const totalHours = knownSeconds / 3_600;
-  let achieved: (typeof VOICE_XP_LEVELS)[number] = VOICE_XP_LEVELS[0];
-  for (const level of VOICE_XP_LEVELS) {
-    if (totalHours >= level.thresholdHours) achieved = level;
-  }
-
+  const achieved = getVoiceXpLevel(knownSeconds);
   const achievedRole = roles.get(achieved.key);
   if (!achievedRole) return;
 

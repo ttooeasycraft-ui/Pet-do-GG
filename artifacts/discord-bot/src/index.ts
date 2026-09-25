@@ -42,6 +42,7 @@ import {
   handleRouletteModal,
 } from './commands/roleta.js';
 import { handleRanking } from './commands/ranking.js';
+import { handleXp } from './commands/xp.js';
 import {
   handleChatXpMessage,
   initializeChatXp,
@@ -138,6 +139,7 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         case 'roleta':        await handleRoulette(interaction);     break;
         case 'tempo-suporte': await handleSupportTimeout(interaction); break;
         case 'ranking':       await handleRanking(interaction);     break;
+        case 'xp':            await handleXp(interaction);          break;
         case 'user': {
           const subcommand = interaction.options.getSubcommand();
           if (subcommand === 'avatar') await handleUserAvatar(interaction);

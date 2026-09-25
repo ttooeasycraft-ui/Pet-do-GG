@@ -161,6 +161,10 @@ const commands = [
     .setName('ranking')
     .setDescription('Mostra o ranking individual de XP do chat'),
 
+  new SlashCommandBuilder()
+    .setName('xp')
+    .setDescription('Mostra seu XP de chat, tempo em call e cargos atuais'),
+
 ].map((cmd) => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(token);
