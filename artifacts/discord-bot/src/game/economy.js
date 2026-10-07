@@ -54,7 +54,8 @@ function upgradeCard(player, cardId, stat) {
     return { ok: false, reason: 'card_not_owned' };
   }
 
-  const currentUpgrades = player.cardLevels?.[cardId] ?? { damage: 0, hp: 0 };
+  const existingUpgrades = player.upgrades ?? player.cardLevels ?? {};
+  const currentUpgrades = existingUpgrades[cardId] ?? { damage: 0, hp: 0 };
   const level = Number(currentUpgrades[stat]) || 0;
   const cost = 10 * (level + 1);
   const coins = Number(player.coins) || 0;
@@ -62,8 +63,8 @@ function upgradeCard(player, cardId, stat) {
     return { ok: false, reason: 'not_enough_coins', cost, coins };
   }
 
-  const cardLevels = {
-    ...(player.cardLevels ?? {}),
+  const upgrades = {
+    ...existingUpgrades,
     [cardId]: {
       damage: Number(currentUpgrades.damage) || 0,
       hp: Number(currentUpgrades.hp) || 0,
@@ -74,7 +75,7 @@ function upgradeCard(player, cardId, stat) {
   return {
     ok: true,
     cost,
-    player: { ...player, coins: coins - cost, cardLevels },
+    player: { ...player, coins: coins - cost, upgrades },
   };
 }
 

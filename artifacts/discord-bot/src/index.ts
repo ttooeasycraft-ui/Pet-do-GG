@@ -6,10 +6,14 @@ import {
   GuildMember,
   Message,
   MessageFlags,
+  ChannelType,
+  PermissionFlagsBits,
 } from 'discord.js';
 
+import antispam from './antispam.js';
 import { loadConfig } from './config.js';
 import { handleSorteio, handleSorteioModal } from './commands/sorteio.js';
+import { handleCardGameButton, handleCardGameCommand } from './commands/cartas.js';
 import { handleWelcome } from './events/welcome.js';
 import {
   handleCreateCallButton,
@@ -96,6 +100,76 @@ const client = new Client({
   ],
 });
 
+const ANTISPAM_CHANNEL_NAME = '﹕₊˚ʚ🛡️ଓ﹕𝗔𝗡𝗧𝗜‧𝗦𝗣𝗔𝗠︵୭';
+const ANTISPAM_CHANNEL_CANONICAL_SUFFIX = '𝗔𝗡𝗧𝗜‧𝗦𝗣𝗔𝗠︵୭';
+let detachAntispam: (() => void) | null = null;
+
+async function initializeAntispamChannel(c: Client): Promise<void> {
+  if (typeof guildId !== 'string' || !isValidSnowflake(guildId)) {
+    console.error('[Antispam] GUILD_ID inválido; canal não criado.');
+    return;
+  }
+  const configuredChannelId = process.env.ANTISPAM_CHANNEL_ID;
+  if (configuredChannelId && !isValidSnowflake(configuredChannelId)) {
+    console.error('[Antispam] ANTISPAM_CHANNEL_ID inválido; listener não ativado.');
+    return;
+  }
+
+  const guild = await c.guilds.fetch(guildId);
+  const botMember = await guild.members.fetchMe();
+  let channel = configuredChannelId
+    ? await guild.channels.fetch(configuredChannelId).catch(() => null)
+    : null;
+
+  if (channel && channel.guildId !== guild.id) {
+    console.error('[Antispam] O canal configurado pertence a outro servidor; listener não ativado.');
+    return;
+  }
+  if (!channel) {
+    const existingChannels = await guild.channels.fetch();
+    channel =
+      existingChannels.find((item) => item?.name === ANTISPAM_CHANNEL_NAME) ??
+      existingChannels.find((item) =>
+        item?.name.startsWith('﹕₊˚ʚ🛡️') &&
+        item.name.endsWith(ANTISPAM_CHANNEL_CANONICAL_SUFFIX),
+      ) ??
+      null;
+  }
+
+  if (!channel) {
+    if (!botMember.permissions.has(PermissionFlagsBits.ManageChannels)) {
+      console.error('[Antispam] O bot não tem permissão para criar o canal.');
+      return;
+    }
+    channel = await guild.channels.create({
+      name: ANTISPAM_CHANNEL_NAME,
+      type: ChannelType.GuildText,
+      topic: 'Canal protegido: qualquer mensagem enviada aqui resulta em banimento automático imediato.',
+      reason: 'Canal dedicado ao antispam solicitado pela administração.',
+    });
+    console.log(`[Antispam] Canal criado: ${channel.name} (${channel.id}).`);
+  }
+
+  if (channel.type !== ChannelType.GuildText) {
+    console.error('[Antispam] Já existe um canal com esse nome, mas ele não é um canal de texto.');
+    return;
+  }
+  if (!botMember.permissions.has(PermissionFlagsBits.BanMembers)) {
+    console.error('[Antispam] O bot não tem permissão de banir membros; listener não ativado.');
+    return;
+  }
+  if (!channel.permissionsFor(botMember)?.has(PermissionFlagsBits.ViewChannel)) {
+    console.error('[Antispam] O bot não consegue visualizar o canal; listener não ativado.');
+    return;
+  }
+
+  detachAntispam?.();
+  detachAntispam = antispam.attachAntispam(c, channel.id, {
+    reason: 'Banimento automático: mensagem enviada no canal antispam.',
+  });
+  console.log(`[Antispam] Banimento automático ativado somente em #${channel.name}.`);
+}
+
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Pet do GG online como: ${c.user.username}`);
   console.log(`🔗 Servidores conectados: ${c.guilds.cache.size}`);
@@ -111,6 +185,10 @@ client.once(Events.ClientReady, (c) => {
   connectGameDatabase().catch((error: unknown) => {
     const errorName = error instanceof Error ? error.name : 'Erro desconhecido';
     console.error(`[GameDB] Não foi possível conectar ao banco (${errorName}); detalhe omitido por segurança.`);
+  });
+  initializeAntispamChannel(c).catch((error: unknown) => {
+    const errorName = error instanceof Error ? error.name : 'Erro desconhecido';
+    console.error(`[Antispam] Inicialização falhou (${errorName}); confira as permissões do bot.`);
   });
 });
 
@@ -163,6 +241,9 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
           }
           break;
         }
+        case 'cartas':
+          await handleCardGameCommand(interaction);
+          break;
         case 'user': {
           const subcommand = interaction.options.getSubcommand();
           if (subcommand === 'avatar') await handleUserAvatar(interaction);
@@ -204,6 +285,10 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 
     // ── Botões ────────────────────────────────────────────────────────────────
     if (interaction.isButton()) {
+      if (await handleCardGameButton(interaction)) {
+        return;
+      }
+
       if (await handleRouletteButton(interaction)) {
         return;
       }

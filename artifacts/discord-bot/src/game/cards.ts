@@ -1,5 +1,5 @@
-export type CardRarity = 'comum' | 'rara' | 'ultra' | 'lendaria';
-export type CardRole = 'dano' | 'dps' | 'suporte' | 'veneno' | 'tanque';
+export type CardRarity = 'comum' | 'rara' | 'ultra';
+export type CardRole = 'dano' | 'dps' | 'suporte' | 'veneno';
 
 export interface CardDefinition {
   id: string;
@@ -12,42 +12,30 @@ export interface CardDefinition {
 }
 
 export const CARD_POOL: readonly CardDefinition[] = [
-  { id: 'guarda_cobre', name: 'Guarda de Cobre', rarity: 'comum', role: 'tanque', damage: 8, hp: 115, description: 'Protege a linha de frente.' },
-  { id: 'arqueira_vento', name: 'Arqueira do Vento', rarity: 'comum', role: 'dps', damage: 17, hp: 72, description: 'Ataca com precisão.' },
-  { id: 'curandeira_lua', name: 'Curandeira da Lua', rarity: 'comum', role: 'suporte', damage: 9, hp: 90, description: 'Recupera aliados durante o duelo.' },
-  { id: 'aprendiz_fogo', name: 'Aprendiz de Fogo', rarity: 'comum', role: 'dano', damage: 14, hp: 78, description: 'Dano direto e confiável.' },
-  { id: 'alquimista_verde', name: 'Alquimista Verde', rarity: 'comum', role: 'veneno', damage: 11, hp: 84, description: 'Aplica dano contínuo.' },
-  { id: 'lobo_neve', name: 'Lobo da Neve', rarity: 'comum', role: 'dps', damage: 15, hp: 82, description: 'Caça o alvo mais vulnerável.' },
-  { id: 'monge_pedra', name: 'Monge de Pedra', rarity: 'comum', role: 'tanque', damage: 10, hp: 108, description: 'Resiste a ataques pesados.' },
-  { id: 'barda_estelar', name: 'Barda Estelar', rarity: 'comum', role: 'suporte', damage: 8, hp: 96, description: 'Fortalece a equipe.' },
-  { id: 'feiticeira_breu', name: 'Feiticeira do Breu', rarity: 'rara', role: 'veneno', damage: 19, hp: 105, description: 'Envenena e desgasta o oponente.' },
-  { id: 'cavaleiro_azul', name: 'Cavaleiro Azul', rarity: 'rara', role: 'tanque', damage: 15, hp: 150, description: 'Defesa reforçada.' },
-  { id: 'medica_fenix', name: 'Médica Fênix', rarity: 'rara', role: 'suporte', damage: 13, hp: 128, description: 'Mantém a equipe de pé.' },
-  { id: 'atirador_cometa', name: 'Atirador Cometa', rarity: 'rara', role: 'dps', damage: 27, hp: 95, description: 'Dano rápido de longa distância.' },
-  { id: 'duelista_rubi', name: 'Duelista Rubi', rarity: 'rara', role: 'dano', damage: 24, hp: 112, description: 'Especialista em dano direto.' },
-  { id: 'guardia_abismo', name: 'Guardiã do Abismo', rarity: 'rara', role: 'tanque', damage: 18, hp: 142, description: 'Absorve parte do dano recebido.' },
-  { id: 'dragao_tempestade', name: 'Dragão da Tempestade', rarity: 'ultra', role: 'dps', damage: 38, hp: 145, description: 'Explode em ataques de alta potência.' },
-  { id: 'oraculo_aurora', name: 'Oráculo da Aurora', rarity: 'ultra', role: 'suporte', damage: 23, hp: 175, description: 'Cura o aliado mais ferido.' },
-  { id: 'serpente_veneno', name: 'Serpente Venenosa', rarity: 'ultra', role: 'veneno', damage: 31, hp: 155, description: 'Seu veneno continua após o ataque.' },
-  { id: 'colosso_obsidiana', name: 'Colosso de Obsidiana', rarity: 'ultra', role: 'tanque', damage: 29, hp: 220, description: 'Uma muralha difícil de derrubar.' },
-  { id: 'rainha_eclipse', name: 'Rainha do Eclipse', rarity: 'lendaria', role: 'dano', damage: 48, hp: 220, description: 'Comanda a batalha com dano massivo.' },
-  { id: 'falcao_celeste', name: 'Falcão Celeste', rarity: 'lendaria', role: 'dps', damage: 58, hp: 175, description: 'Ataca primeiro e atinge com força.' },
-  { id: 'arvore_mundo', name: 'Árvore do Mundo', rarity: 'lendaria', role: 'suporte', damage: 34, hp: 280, description: 'Sustenta toda a equipe.' },
-  { id: 'hidra_eterna', name: 'Hidra Eterna', rarity: 'lendaria', role: 'veneno', damage: 45, hp: 235, description: 'Cada turno fortalece o veneno.' },
+  { id: 'recruta_arcano', name: 'Recruta Arcano', rarity: 'comum', role: 'dano', damage: 12, hp: 90, description: 'Dano direto e equilibrado.' },
+  { id: 'curandeira_jade', name: 'Curandeira de Jade', rarity: 'comum', role: 'suporte', damage: 7, hp: 115, description: 'Recupera a carta aliada mais ferida.' },
+  { id: 'falcao_veloz', name: 'Falcão Veloz', rarity: 'comum', role: 'dps', damage: 15, hp: 75, description: 'Ataca com velocidade e força.' },
+  { id: 'aranha_nevoa', name: 'Aranha da Névoa', rarity: 'comum', role: 'veneno', damage: 10, hp: 100, description: 'Envenena o alvo por vários turnos.' },
+  { id: 'cavaleiro_rubro', name: 'Cavaleiro Rubro', rarity: 'rara', role: 'dano', damage: 24, hp: 130, description: 'Golpes fortes com boa resistência.' },
+  { id: 'oraculo_azul', name: 'Oráculo Azul', rarity: 'rara', role: 'suporte', damage: 15, hp: 175, description: 'Sustenta a equipe com cura.' },
+  { id: 'atiradora_cometa', name: 'Atiradora Cometa', rarity: 'rara', role: 'dps', damage: 29, hp: 105, description: 'Dano contínuo de alta velocidade.' },
+  { id: 'serpente_umbra', name: 'Serpente Umbra', rarity: 'rara', role: 'veneno', damage: 21, hp: 145, description: 'Aplica veneno e desgasta o inimigo.' },
+  { id: 'dragao_celeste', name: 'Dragão Celeste', rarity: 'ultra', role: 'dano', damage: 43, hp: 220, description: 'Ataques poderosos e muita vida.' },
+  { id: 'sacerdotisa_estelar', name: 'Sacerdotisa Estelar', rarity: 'ultra', role: 'suporte', damage: 27, hp: 275, description: 'Grande suporte para toda a equipe.' },
+  { id: 'fenda_rasante', name: 'Fenda Rasante', rarity: 'ultra', role: 'dps', damage: 52, hp: 180, description: 'Dano explosivo em sequência.' },
+  { id: 'hidra_corrosiva', name: 'Hidra Corrosiva', rarity: 'ultra', role: 'veneno', damage: 38, hp: 245, description: 'Veneno intenso que continua causando dano.' },
 ];
 
 export const DAILY_COINS_BY_RARITY: Record<CardRarity, number> = {
   comum: 1,
   rara: 3,
   ultra: 10,
-  lendaria: 20,
 };
 
 export const RARITY_LABELS: Record<CardRarity, string> = {
   comum: 'Comum',
   rara: 'Rara',
   ultra: 'Ultra',
-  lendaria: 'Lendária',
 };
 
 export const ROLE_LABELS: Record<CardRole, string> = {
@@ -55,22 +43,17 @@ export const ROLE_LABELS: Record<CardRole, string> = {
   dps: 'DPS',
   suporte: 'Suporte',
   veneno: 'Envenenamento',
-  tanque: 'Tanque',
 };
 
 export const RARITY_EMOJI: Record<CardRarity, string> = {
   comum: '⚪',
   rara: '🔵',
   ultra: '🟣',
-  lendaria: '🟡',
 };
 
 export function drawCard(): CardDefinition {
-  const roll = Math.random() * 100;
-  const rarity: CardRarity =
-    roll < 55 ? 'comum' :
-    roll < 85 ? 'rara' :
-    roll < 97 ? 'ultra' : 'lendaria';
+  const roll = Math.random();
+  const rarity: CardRarity = roll < 0.6 ? 'comum' : roll < 0.9 ? 'rara' : 'ultra';
   const pool = CARD_POOL.filter((card) => card.rarity === rarity);
   return pool[Math.floor(Math.random() * pool.length)];
 }

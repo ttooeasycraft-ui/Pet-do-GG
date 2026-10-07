@@ -9,6 +9,7 @@ import {
   SlashCommandBuilder,
   PermissionFlagsBits,
 } from 'discord.js';
+import { CARD_POOL, RARITY_LABELS } from './game/cards.js';
 
 const token   = process.env.DISCORD_BOT_TOKEN;
 const guildId = process.env.GUILD_ID;
@@ -164,6 +165,89 @@ const commands = [
   new SlashCommandBuilder()
     .setName('xp')
     .setDescription('Mostra seu XP de chat, tempo em call e cargos atuais'),
+
+  new SlashCommandBuilder()
+    .setName('cartas')
+    .setDescription('Colecione cartas, monte seu deck e dispute X1')
+    .addSubcommand((subcommand) =>
+      subcommand.setName('puxar').setDescription('Tente conseguir uma carta nova (intervalo de 6 horas)')
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName('diaria').setDescription('Receba moedas pelas cartas da sua coleção')
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('colecao')
+        .setDescription('Mostra as cartas e as estatísticas de um jogador')
+        .addUserOption((option) => option.setName('jogador').setDescription('Jogador').setRequired(false))
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName('deck').setDescription('Mostra seu deck atual')
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('adicionar')
+        .setDescription('Adiciona uma carta sua ao deck')
+        .addStringOption((option) =>
+          option
+            .setName('carta')
+            .setDescription('Carta da sua coleção')
+            .setRequired(true)
+            .addChoices(...CARD_POOL.map((card) => ({
+              name: `${card.name} (${RARITY_LABELS[card.rarity]})`,
+              value: card.id,
+            })))
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('remover')
+        .setDescription('Remove uma carta do seu deck')
+        .addStringOption((option) =>
+          option
+            .setName('carta')
+            .setDescription('Carta para remover')
+            .setRequired(true)
+            .addChoices(...CARD_POOL.map((card) => ({
+              name: `${card.name} (${RARITY_LABELS[card.rarity]})`,
+              value: card.id,
+            })))
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('upar')
+        .setDescription('Aumenta o dano ou HP de uma carta sua')
+        .addStringOption((option) =>
+          option
+            .setName('carta')
+            .setDescription('Carta para melhorar')
+            .setRequired(true)
+            .addChoices(...CARD_POOL.map((card) => ({
+              name: `${card.name} (${RARITY_LABELS[card.rarity]})`,
+              value: card.id,
+            })))
+        )
+        .addStringOption((option) =>
+          option
+            .setName('atributo')
+            .setDescription('Atributo que receberá o upgrade')
+            .setRequired(true)
+            .addChoices(
+              { name: 'Dano', value: 'damage' },
+              { name: 'HP', value: 'hp' },
+            )
+        )
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('duelo')
+        .setDescription('Desafia outro jogador para um X1')
+        .addUserOption((option) => option.setName('jogador').setDescription('Oponente').setRequired(true))
+    )
+    .addSubcommand((subcommand) =>
+      subcommand.setName('ranking').setDescription('Mostra o ranking de vitórias em X1')
+    ),
 
 ].map((cmd) => cmd.toJSON());
 

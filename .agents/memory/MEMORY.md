@@ -1,1 +1,2 @@
 - [Painéis Discord experimentais](discord-test-panels.md) — componentes só funcionam com um handler persistente; protótipos devem ser limitados ao canal e nunca usar menções públicas.
+- [IDs de canais Discord](discord-channel-ids.md) — nomes com símbolos estilizados podem ser normalizados; use IDs configurados e valide o servidor.

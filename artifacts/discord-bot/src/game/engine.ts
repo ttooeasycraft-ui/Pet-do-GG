@@ -4,11 +4,12 @@ import {
   CARD_POOL,
   CardDefinition,
   CardRole,
-  DAILY_COINS_BY_RARITY,
-  drawCard,
   findCard,
   RARITY_LABELS,
 } from './cards.js';
+import economy from './economy.js';
+import deckTools from './deck.js';
+import battleTools from './battle.js';
 import {
   DuelRecord,
   GamePlayer,
@@ -19,8 +20,7 @@ import {
 
 const DRAW_COOLDOWN_MS = 6 * 60 * 60 * 1_000;
 const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1_000;
-const DECK_SIZE = 3;
-const MAX_ROUNDS = 30;
+const DECK_SIZE = deckTools.MAX_DECK_SIZE;
 
 export class GameDatabaseUnavailableError extends Error {
   constructor() {
@@ -83,10 +83,10 @@ export async function summonCard(userId: string): Promise<{
     };
   }
 
-  const card = drawCard();
+  const card = economy.drawRandomCard();
   const duplicate = player.cards.includes(card.id);
   if (duplicate) {
-    const duplicateCoins = DAILY_COINS_BY_RARITY[card.rarity];
+    const duplicateCoins = economy.DAILY_COINS_BY_RARITY[card.rarity];
     await players.updateOne(
       { _id: userId },
       { $inc: { coins: duplicateCoins }, $set: { updatedAt: now } },
@@ -117,10 +117,7 @@ export async function claimDailyCoins(userId: string): Promise<{
   if (player.cards.length === 0) return { coins: 0, cardCount: 0 };
 
   const now = Date.now();
-  const reward = player.cards.reduce((total, cardId) => {
-    const card = findCard(cardId);
-    return total + (card ? DAILY_COINS_BY_RARITY[card.rarity] : 0);
-  }, 0);
+  const reward = economy.calculateDailyCoins(player.cards);
 
   if (player.lastDailyAt && now - player.lastDailyAt < DAILY_COOLDOWN_MS) {
     return {
@@ -160,10 +157,11 @@ export async function upgradeCard(
 ): Promise<{ cost: number; newLevel: number; coins: number } | null> {
   const players = playersCollection();
   const player = await getGamePlayer(userId);
-  if (!player.cards.includes(cardId)) return null;
+  const upgrade = economy.upgradeCard(player, cardId, stat);
+  if (!upgrade.ok) return null;
 
-  const currentLevel = player.upgrades[cardId]?.[stat] ?? 0;
-  const cost = 10 * (currentLevel + 1);
+  const newLevel = upgrade.player.upgrades?.[cardId]?.[stat] ?? 1;
+  const cost = upgrade.cost;
   const path = `upgrades.${cardId}.${stat}`;
   const result = await players.updateOne(
     { _id: userId, coins: { $gte: cost }, cards: cardId },
@@ -174,7 +172,7 @@ export async function upgradeCard(
   );
 
   if (result.modifiedCount !== 1) return null;
-  return { cost, newLevel: currentLevel + 1, coins: player.coins - cost };
+  return { cost, newLevel, coins: player.coins - cost };
 }
 
 export async function addCardToDeck(
@@ -183,11 +181,9 @@ export async function addCardToDeck(
 ): Promise<{ ok: boolean; reason?: string; deck?: string[] }> {
   const players = playersCollection();
   const player = await getGamePlayer(userId);
-  if (!player.cards.includes(cardId)) return { ok: false, reason: 'card_not_owned' };
-  if (player.deck.includes(cardId)) return { ok: false, reason: 'already_in_deck' };
-  if (player.deck.length >= DECK_SIZE) return { ok: false, reason: 'deck_full' };
-
-  const nextDeck = [...player.deck, cardId];
+  const change = deckTools.addCardToDeck(player, cardId);
+  if (!change.ok) return { ok: false, reason: change.reason };
+  const nextDeck = change.deck;
   if (nextDeck.length === DECK_SIZE) {
     const roles = new Set(nextDeck.map((id) => findCard(id)?.role).filter(Boolean));
     if (roles.size < 2) return { ok: false, reason: 'needs_variety' };
@@ -208,11 +204,13 @@ export async function removeCardFromDeck(
   const player = await getGamePlayer(userId);
   const deck = player.deck.filter((id) => id !== cardId);
   if (deck.length === player.deck.length) return { ok: false, deck: player.deck };
+  const change = deckTools.setDeck(player, deck);
+  if (!change.ok) return { ok: false, deck: player.deck };
   await players.updateOne(
     { _id: userId },
-    { $set: { deck, updatedAt: Date.now() } },
+    { $set: { deck: change.deck, updatedAt: Date.now() } },
   );
-  return { ok: true, deck };
+  return { ok: true, deck: change.deck ?? deck };
 }
 
 export interface DuelChallenge {
@@ -249,12 +247,10 @@ export async function createDuelChallenge(
 }
 
 export function saveDuelMessage(duelId: string, messageId: string): Promise<unknown> {
-  return duelsCollection().then
-    ? Promise.resolve(duelsCollection().updateOne(
-        { _id: duelId, status: 'pending' },
-        { $set: { messageId } },
-      ))
-    : Promise.resolve(null);
+  return duelsCollection().updateOne(
+    { _id: duelId, status: 'pending' },
+    { $set: { messageId } },
+  );
 }
 
 export interface DuelResult {
@@ -265,115 +261,28 @@ export interface DuelResult {
   summary: string;
 }
 
-interface Combatant {
-  card: CardDefinition;
-  hp: number;
-  maxHp: number;
-  attack: number;
-  poisonTurns: number;
-  poisonDamage: number;
-}
-
-function buildCombatants(player: GamePlayer): Combatant[] {
-  return player.deck.map((cardId) => {
-    const card = findCard(cardId)!;
-    const upgrade = player.upgrades[cardId] ?? { damage: 0, hp: 0 };
-    return {
-      card,
-      maxHp: card.hp + upgrade.hp * 10,
-      hp: card.hp + upgrade.hp * 10,
-      attack: card.damage + upgrade.damage * 2,
-      poisonTurns: 0,
-      poisonDamage: 0,
-    };
-  });
-}
-
-function alive(team: Combatant[]): Combatant[] {
-  return team.filter((fighter) => fighter.hp > 0);
-}
-
-function teamHealth(team: Combatant[]): number {
-  return alive(team).reduce((sum, fighter) => sum + fighter.hp, 0);
-}
-
-function takeTeamTurn(attacking: Combatant[], defending: Combatant[]): string[] {
-  const messages: string[] = [];
-  for (const fighter of alive(attacking)) {
-    if (!alive(defending).length) break;
-
-    if (fighter.card.role === 'suporte') {
-      const wounded = alive(attacking)
-        .filter((ally) => ally.hp < ally.maxHp)
-        .sort((a, b) => (b.maxHp - b.hp) - (a.maxHp - a.hp))[0];
-      if (wounded) {
-        const healed = Math.min(wounded.maxHp - wounded.hp, Math.ceil(wounded.maxHp * 0.13));
-        wounded.hp += healed;
-        messages.push(`${fighter.card.name} recupera ${healed} HP de ${wounded.card.name}.`);
-        continue;
-      }
-    }
-
-    const target =
-      alive(defending).find((candidate) => candidate.card.role === 'tanque') ??
-      alive(defending).sort((a, b) => a.hp - b.hp)[0];
-    const roleMultiplier: Record<CardRole, number> = {
-      dano: 1.08,
-      dps: 1.2,
-      suporte: 0.72,
-      veneno: 0.88,
-      tanque: 0.82,
-    };
-    const randomFactor = 0.9 + Math.random() * 0.2;
-    const defenseMultiplier = target.card.role === 'tanque' ? 0.78 : 1;
-    const damage = Math.max(1, Math.round(fighter.attack * roleMultiplier[fighter.card.role] * randomFactor * defenseMultiplier));
-    target.hp -= damage;
-    messages.push(`${fighter.card.name} causa ${damage} de dano em ${target.card.name}.`);
-
-    if (fighter.card.role === 'veneno' && target.hp > 0) {
-      target.poisonTurns = Math.max(target.poisonTurns, 3);
-      target.poisonDamage = Math.max(target.poisonDamage, Math.ceil(fighter.attack * 0.12));
-    }
-  }
-  return messages;
-}
-
 export function simulateDuel(
   challenger: GamePlayer,
   challenged: GamePlayer,
 ): DuelResult {
-  const left = buildCombatants(challenger);
-  const right = buildCombatants(challenged);
-  const log: string[] = [];
-  let rounds = 0;
-
-  for (rounds = 1; rounds <= MAX_ROUNDS; rounds++) {
-    for (const fighter of [...alive(left), ...alive(right)]) {
-      if (fighter.poisonTurns > 0 && fighter.hp > 0) {
-        fighter.hp -= fighter.poisonDamage;
-        fighter.poisonTurns--;
-        log.push(`${fighter.card.name} sofre ${fighter.poisonDamage} de veneno.`);
-      }
-    }
-    log.push(...takeTeamTurn(left, right));
-    log.push(...takeTeamTurn(right, left));
-    if (!alive(left).length || !alive(right).length) break;
+  const left = deckTools.getDeckWithStats(challenger);
+  const right = deckTools.getDeckWithStats(challenged);
+  const battle = battleTools.simulateBattle(left, right, { maxRounds: 1_000 });
+  const summary =
+    `Dano do time A: ${battle.totals.A.damage} · HP do time A: ${battle.remainingHp.A}\n` +
+    `Dano do time B: ${battle.totals.B.damage} · HP do time B: ${battle.remainingHp.B}`;
+  if (battle.winner === 'empate') {
+    return { status: 'draw', rounds: battle.rounds, summary };
   }
 
-  const leftHealth = teamHealth(left);
-  const rightHealth = teamHealth(right);
-  if (leftHealth === rightHealth) {
-    return { status: 'draw', rounds: Math.min(rounds, MAX_ROUNDS), summary: log.slice(-6).join('\n') };
-  }
-
-  const winnerId = leftHealth > rightHealth ? challenger._id : challenged._id;
-  const loserId = leftHealth > rightHealth ? challenged._id : challenger._id;
+  const winnerId = battle.winner === 'A' ? challenger._id : challenged._id;
+  const loserId = battle.winner === 'A' ? challenged._id : challenger._id;
   return {
     status: 'finished',
     winnerId,
     loserId,
-    rounds: Math.min(rounds, MAX_ROUNDS),
-    summary: log.slice(-6).join('\n'),
+    rounds: battle.rounds,
+    summary,
   };
 }
 
@@ -522,9 +431,11 @@ export function calculateCardStats(
   const card = findCard(cardId);
   if (!card || !player.cards.includes(cardId)) return null;
   const upgrades = player.upgrades[cardId] ?? { damage: 0, hp: 0 };
+  const effective = deckTools.getDeckWithStats({ ...player, deck: [cardId] })[0];
+  if (!effective) return null;
   return {
-    damage: card.damage + upgrades.damage * 2,
-    hp: card.hp + upgrades.hp * 10,
+    damage: effective.damage,
+    hp: effective.hp,
     damageLevel: upgrades.damage,
     hpLevel: upgrades.hp,
   };
