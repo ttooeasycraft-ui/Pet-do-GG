@@ -41,6 +41,69 @@ function duelsCollection() {
   return collection;
 }
 
+function normalizeCardReference(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+const CARD_IDS_BY_REFERENCE = new Map<string, string>();
+for (const card of CARD_POOL) {
+  CARD_IDS_BY_REFERENCE.set(normalizeCardReference(card.id), card.id);
+  CARD_IDS_BY_REFERENCE.set(normalizeCardReference(card.name), card.id);
+}
+
+export function resolveCardId(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const trimmed = value.trim();
+  const exact = findCard(trimmed);
+  if (exact) return exact.id;
+
+  const normalized = normalizeCardReference(trimmed);
+  const withoutRarity = normalized.replace(/(comum|rara|ultra)$/, '');
+  return CARD_IDS_BY_REFERENCE.get(normalized) ??
+    CARD_IDS_BY_REFERENCE.get(withoutRarity);
+}
+
+function resolveCardReference(value: unknown): string | undefined {
+  if (typeof value === 'string') return resolveCardId(value);
+  if (!value || typeof value !== 'object') return undefined;
+
+  const record = value as Record<string, unknown>;
+  return resolveCardId(
+    record.id ?? record.cardId ?? record.name ?? record.cardName ?? record.value,
+  );
+}
+
+function ownedCardIds(player: GamePlayer): string[] {
+  const legacyPlayer = player as GamePlayer & { collection?: unknown };
+  const storedCards = Array.isArray(legacyPlayer.cards)
+    ? legacyPlayer.cards
+    : Array.isArray(legacyPlayer.collection)
+      ? legacyPlayer.collection
+      : [];
+  return [...new Set(
+    storedCards
+      .map(resolveCardReference)
+      .filter((cardId): cardId is string => Boolean(cardId)),
+  )];
+}
+
+function deckCardIds(player: GamePlayer): string[] {
+  return Array.isArray(player.deck)
+    ? player.deck
+      .map(resolveCardReference)
+      .filter((cardId): cardId is string => Boolean(cardId))
+    : [];
+}
+
+export function playerOwnsCard(player: GamePlayer, value: unknown): boolean {
+  const cardId = resolveCardReference(value);
+  return Boolean(cardId && ownedCardIds(player).includes(cardId));
+}
+
 export async function getGamePlayer(userId: string): Promise<GamePlayer> {
   const player = await getOrCreatePlayer(userId);
   if (!player) throw new GameDatabaseUnavailableError();
@@ -55,6 +118,7 @@ export async function summonCard(userId: string): Promise<{
 }> {
   const players = playersCollection();
   const player = await getGamePlayer(userId);
+  const collection = ownedCardIds(player);
   const now = Date.now();
 
   if (player.lastDrawAt && now - player.lastDrawAt < DRAW_COOLDOWN_MS) {
@@ -84,26 +148,31 @@ export async function summonCard(userId: string): Promise<{
   }
 
   const card = economy.drawRandomCard();
-  const duplicate = player.cards.includes(card.id);
+  const duplicate = collection.includes(card.id);
   if (duplicate) {
     const duplicateCoins = economy.DAILY_COINS_BY_RARITY[card.rarity];
-    await players.updateOne(
+    const saved = await players.updateOne(
       { _id: userId },
-      { $inc: { coins: duplicateCoins }, $set: { updatedAt: now } },
+      {
+        $inc: { coins: duplicateCoins },
+        $set: { cards: collection, updatedAt: now },
+      },
     );
+    if (saved.matchedCount !== 1) throw new Error('Não foi possível salvar a carta repetida.');
     return { card, duplicate: true, coins: duplicateCoins };
   }
 
-  await players.updateOne(
-    { _id: userId, cards: { $ne: card.id } },
+  const saved = await players.updateOne(
+    { _id: userId },
     {
-      $addToSet: { cards: card.id },
       $set: {
+        cards: [...collection, card.id],
         [`upgrades.${card.id}`]: { damage: 0, hp: 0 },
         updatedAt: now,
       },
     },
   );
+  if (saved.matchedCount !== 1) throw new Error('Não foi possível salvar a carta sorteada.');
   return { card, duplicate: false, coins: 0 };
 }
 
@@ -114,15 +183,16 @@ export async function claimDailyCoins(userId: string): Promise<{
 }> {
   const players = playersCollection();
   const player = await getGamePlayer(userId);
-  if (player.cards.length === 0) return { coins: 0, cardCount: 0 };
+  const collection = ownedCardIds(player);
+  if (collection.length === 0) return { coins: 0, cardCount: 0 };
 
   const now = Date.now();
-  const reward = economy.calculateDailyCoins(player.cards);
+  const reward = economy.calculateDailyCoins(collection);
 
   if (player.lastDailyAt && now - player.lastDailyAt < DAILY_COOLDOWN_MS) {
     return {
       coins: 0,
-      cardCount: player.cards.length,
+      cardCount: collection.length,
       nextAt: player.lastDailyAt + DAILY_COOLDOWN_MS,
     };
   }
@@ -142,12 +212,12 @@ export async function claimDailyCoins(userId: string): Promise<{
     const latest = await players.findOne({ _id: userId });
     return {
       coins: 0,
-      cardCount: player.cards.length,
+      cardCount: collection.length,
       nextAt: (latest?.lastDailyAt ?? now) + DAILY_COOLDOWN_MS,
     };
   }
 
-  return { coins: reward, cardCount: player.cards.length };
+  return { coins: reward, cardCount: collection.length };
 }
 
 export async function upgradeCard(
@@ -157,17 +227,24 @@ export async function upgradeCard(
 ): Promise<{ cost: number; newLevel: number; coins: number } | null> {
   const players = playersCollection();
   const player = await getGamePlayer(userId);
-  const upgrade = economy.upgradeCard(player, cardId, stat);
+  const resolvedCardId = resolveCardId(cardId);
+  if (!resolvedCardId) return null;
+  const collection = ownedCardIds(player);
+  const upgrade = economy.upgradeCard(
+    { ...player, cards: collection },
+    resolvedCardId,
+    stat,
+  );
   if (!upgrade.ok) return null;
 
-  const newLevel = upgrade.player.upgrades?.[cardId]?.[stat] ?? 1;
+  const newLevel = upgrade.player.upgrades?.[resolvedCardId]?.[stat] ?? 1;
   const cost = upgrade.cost;
-  const path = `upgrades.${cardId}.${stat}`;
+  const path = `upgrades.${resolvedCardId}.${stat}`;
   const result = await players.updateOne(
-    { _id: userId, coins: { $gte: cost }, cards: cardId },
+    { _id: userId, coins: { $gte: cost } },
     {
       $inc: { coins: -cost, [path]: 1 },
-      $set: { updatedAt: Date.now() },
+      $set: { cards: collection, updatedAt: Date.now() },
     },
   );
 
@@ -181,7 +258,12 @@ export async function addCardToDeck(
 ): Promise<{ ok: boolean; reason?: string; deck?: string[] }> {
   const players = playersCollection();
   const player = await getGamePlayer(userId);
-  const change = deckTools.addCardToDeck(player, cardId);
+  const resolvedCardId = resolveCardId(cardId);
+  if (!resolvedCardId) return { ok: false, reason: 'unknown_card' };
+  const collection = ownedCardIds(player);
+  const currentDeck = deckCardIds(player);
+  const normalizedPlayer = { ...player, cards: collection, deck: currentDeck };
+  const change = deckTools.addCardToDeck(normalizedPlayer, resolvedCardId);
   if (!change.ok) return { ok: false, reason: change.reason };
   const nextDeck = change.deck;
   if (nextDeck.length === DECK_SIZE) {
@@ -189,10 +271,11 @@ export async function addCardToDeck(
     if (roles.size < 2) return { ok: false, reason: 'needs_variety' };
   }
 
-  await players.updateOne(
+  const saved = await players.updateOne(
     { _id: userId },
-    { $set: { deck: nextDeck, updatedAt: Date.now() } },
+    { $set: { cards: collection, deck: nextDeck, updatedAt: Date.now() } },
   );
+  if (saved.matchedCount !== 1) return { ok: false, reason: 'save_failed' };
   return { ok: true, deck: nextDeck };
 }
 
@@ -202,14 +285,28 @@ export async function removeCardFromDeck(
 ): Promise<{ ok: boolean; deck: string[] }> {
   const players = playersCollection();
   const player = await getGamePlayer(userId);
-  const deck = player.deck.filter((id) => id !== cardId);
-  if (deck.length === player.deck.length) return { ok: false, deck: player.deck };
-  const change = deckTools.setDeck(player, deck);
-  if (!change.ok) return { ok: false, deck: player.deck };
-  await players.updateOne(
-    { _id: userId },
-    { $set: { deck: change.deck, updatedAt: Date.now() } },
+  const resolvedCardId = resolveCardId(cardId);
+  const currentDeck = deckCardIds(player);
+  if (!resolvedCardId || !currentDeck.includes(resolvedCardId)) {
+    return { ok: false, deck: currentDeck };
+  }
+  const deck = currentDeck.filter((id) => id !== resolvedCardId);
+  const change = deckTools.setDeck(
+    { ...player, cards: ownedCardIds(player), deck: currentDeck },
+    deck,
   );
+  if (!change.ok) return { ok: false, deck: currentDeck };
+  const saved = await players.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        cards: ownedCardIds(player),
+        deck: change.deck,
+        updatedAt: Date.now(),
+      },
+    },
+  );
+  if (saved.matchedCount !== 1) return { ok: false, deck: currentDeck };
   return { ok: true, deck: change.deck ?? deck };
 }
 

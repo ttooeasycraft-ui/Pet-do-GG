@@ -27,6 +27,8 @@ import {
   getWinRanking,
   rarityName,
   removeCardFromDeck,
+  playerOwnsCard,
+  resolveCardId,
   saveDuelMessage,
   summonCard,
   updateTopDuelRole,
@@ -137,10 +139,12 @@ async function handleAddCard(interaction: ChatInputCommandInteraction): Promise<
   const result = await addCardToDeck(interaction.user.id, cardId);
   if (!result.ok) {
     const messages: Record<string, string> = {
+      unknown_card: 'Essa carta não foi reconhecida. Escolha uma das opções da lista.',
       card_not_owned: 'Essa carta não está na sua coleção.',
       already_in_deck: 'Essa carta já está no deck.',
       deck_full: 'Seu deck já tem 4 cartas. Remova uma antes de adicionar outra.',
       needs_variety: 'Para fechar o deck, escolha pelo menos 2 papéis diferentes.',
+      save_failed: 'Não consegui salvar essa carta no deck. Tente novamente.',
     };
     await interaction.reply({
       content: messages[result.reason ?? ''] ?? 'Não foi possível adicionar essa carta.',
@@ -150,8 +154,9 @@ async function handleAddCard(interaction: ChatInputCommandInteraction): Promise<
   }
 
   const player = await getGamePlayer(interaction.user.id);
+  const addedCardId = result.deck?.at(-1) ?? resolveCardId(cardId) ?? cardId;
   await interaction.reply({
-    content: `**${findCard(cardId)?.name}** entrou no deck (${result.deck?.length}/4).\n${result.deck?.map((id) => formatCard(id, player)).join('\n')}`,
+    content: `**${findCard(addedCardId)?.name ?? cardId}** entrou no deck (${result.deck?.length}/4).\n${result.deck?.map((id) => formatCard(id, player)).join('\n')}`,
   });
 }
 
@@ -174,7 +179,7 @@ async function handleUpgrade(interaction: ChatInputCommandInteraction): Promise<
   const result = await upgradeCard(interaction.user.id, cardId, stat);
   if (!result) {
     const player = await getGamePlayer(interaction.user.id);
-    const message = !player.cards.includes(cardId)
+    const message = !playerOwnsCard(player, cardId)
       ? 'Essa carta não está na sua coleção.'
       : 'Você não tem moedas suficientes para esse upgrade.';
     await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
