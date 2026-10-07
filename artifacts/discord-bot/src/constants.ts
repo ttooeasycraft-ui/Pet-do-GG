@@ -32,6 +32,9 @@ export const SUGGESTIONS_CHANNEL_ID = '1535487520132042852';
 /** Canal privado onde o protótipo de matchmaking pode ser testado. */
 export const MATCHMAKING_TEST_CHANNEL_ID = '1546484925425917972';
 
+/** Canal exclusivo para consultar XP e o ranking. */
+export const XP_COMMAND_CHANNEL_ID = '1525234699038101564';
+
 /**
  * Verifica se a interação veio de alguém com cargo de staff.
  * Lida com os dois tipos que Discord.js pode retornar:

@@ -29,7 +29,10 @@ import {
 } from './commands/suporte.js';
 import { handleEditar, handleEditarModal } from './commands/editar.js';
 import { handleSuggestion, handleUserAvatar, handleUserInfo } from './commands/user.js';
-import { SUGGESTIONS_CHANNEL_ID } from './constants.js';
+import {
+  SUGGESTIONS_CHANNEL_ID,
+  XP_COMMAND_CHANNEL_ID,
+} from './constants.js';
 import { handleVoiceStateUpdate } from './events/voice.js';
 import {
   handleVoiceXpStateUpdate,
@@ -138,8 +141,23 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
         case 'sugerir':       await handleSuggestion(interaction, SUGGESTIONS_CHANNEL_ID); break;
         case 'roleta':        await handleRoulette(interaction);     break;
         case 'tempo-suporte': await handleSupportTimeout(interaction); break;
-        case 'ranking':       await handleRanking(interaction);     break;
-        case 'xp':            await handleXp(interaction);          break;
+        case 'ranking':
+        case 'xp': {
+          if (interaction.channelId !== XP_COMMAND_CHANNEL_ID) {
+            await interaction.reply({
+              content: 'Use este comando somente no canal de XP e ranking: <#1525234699038101564>.',
+              flags: MessageFlags.Ephemeral,
+            });
+            break;
+          }
+
+          if (interaction.commandName === 'ranking') {
+            await handleRanking(interaction);
+          } else {
+            await handleXp(interaction);
+          }
+          break;
+        }
         case 'user': {
           const subcommand = interaction.options.getSubcommand();
           if (subcommand === 'avatar') await handleUserAvatar(interaction);
