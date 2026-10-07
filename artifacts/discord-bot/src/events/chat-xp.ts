@@ -18,8 +18,12 @@ import {
 } from '../config.js';
 
 const CHAT_XP_PER_MESSAGE = 1;
-const CHAT_XP_COOLDOWN_MS = 60_000;
-const MIN_MESSAGE_LENGTH = 3;
+const CHAT_XP_COOLDOWN_MS = 8_000; // intervalo curto só pra evitar flood de teclado
+const MIN_MESSAGE_LENGTH = 5; // mensagens minúsculas tipo "oi", "sim" não contam
+const MIN_MESSAGE_WORDS = 2; // exige pelo menos 2 palavras
+const MESSAGE_HISTORY_SIZE = 5; // quantas mensagens recentes guardamos pra detectar repetição
+const MAX_AWARDS_PER_WINDOW = 8; // limite de segurança: no máx. 8 mensagens contam por minuto
+const AWARDS_WINDOW_MS = 60_000;
 
 export const CHAT_XP_LEVELS = [
   { key: 'leitor', name: 'Leitor', thresholdXp: 0, color: 0x95a5a6 },
@@ -37,7 +41,17 @@ interface ChatRoleState {
 }
 
 const roleCache = new Map<string, ChatRoleState>();
-const lastMessageByUser = new Map<string, string>();
+const lastMessagesByUser = new Map<string, string[]>();
+const awardTimestampsByUser = new Map<string, number[]>();
+
+/** Normaliza a mensagem pra detectar repetição disfarçada (maiúsculas, espaços, "kkkkkk" etc.) */
+function normalizeContent(content: string): string {
+  return content
+    .toLowerCase()
+    .trim()
+    .replace(/(.)\1{2,}/g, '$1$1') // "kkkkkkk" -> "kk", "aaaaa" -> "aa"
+    .replace(/\s+/g, ' ');
+}
 
 export async function initializeChatXp(client: Client): Promise<void> {
   for (const guild of client.guilds.cache.values()) {
@@ -56,22 +70,38 @@ export async function initializeChatXp(client: Client): Promise<void> {
 export async function handleChatXpMessage(message: Message): Promise<void> {
   if (!message.guild || message.author.bot) return;
 
-  const content = message.content.trim();
-  if (content.length < MIN_MESSAGE_LENGTH) return;
+  const rawContent = message.content.trim();
+  if (rawContent.length < MIN_MESSAGE_LENGTH) return;
 
-  const previousContent = lastMessageByUser.get(message.author.id);
-  if (previousContent === content) return;
+  const wordCount = rawContent.split(/\s+/).filter(Boolean).length;
+  if (wordCount < MIN_MESSAGE_WORDS) return;
+
+  const userId = message.author.id;
+  const normalized = normalizeContent(rawContent);
+
+  // Bloqueia se a mensagem (normalizada) já apareceu recentemente pra essa pessoa
+  const history = lastMessagesByUser.get(userId) ?? [];
+  if (history.includes(normalized)) return;
 
   const now = Date.now();
-  if (now - getChatXpLastAwardAt(message.author.id) < CHAT_XP_COOLDOWN_MS) {
+  if (now - getChatXpLastAwardAt(userId) < CHAT_XP_COOLDOWN_MS) return;
+
+  // Trava de segurança: mesmo com mensagens diferentes, limita quantas contam por minuto
+  const recentAwards = (awardTimestampsByUser.get(userId) ?? []).filter(
+    (t) => now - t < AWARDS_WINDOW_MS,
+  );
+  if (recentAwards.length >= MAX_AWARDS_PER_WINDOW) {
+    awardTimestampsByUser.set(userId, recentAwards);
     return;
   }
 
-  lastMessageByUser.set(message.author.id, content);
-  setChatXpLastAwardAt(message.author.id, now);
+  lastMessagesByUser.set(userId, [normalized, ...history].slice(0, MESSAGE_HISTORY_SIZE));
+  recentAwards.push(now);
+  awardTimestampsByUser.set(userId, recentAwards);
+  setChatXpLastAwardAt(userId, now);
 
-  const totalXp = addChatXp(message.author.id, CHAT_XP_PER_MESSAGE);
-  const member = message.member ?? await message.guild.members.fetch(message.author.id).catch(() => null);
+  const totalXp = addChatXp(userId, CHAT_XP_PER_MESSAGE);
+  const member = message.member ?? await message.guild.members.fetch(userId).catch(() => null);
   if (member) await updateChatXpRole(member, totalXp);
 }
 
