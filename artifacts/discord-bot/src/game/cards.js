@@ -6,6 +6,9 @@ const CARDS = Object.freeze([
     rarity: 'comum',
     damageBase: 12,
     hpBase: 90,
+    damage: 12,
+    hp: 90,
+    description: 'Dano direto e equilibrado.',
   }),
   Object.freeze({
     id: 'curandeira_jade',
@@ -14,6 +17,9 @@ const CARDS = Object.freeze([
     rarity: 'comum',
     damageBase: 7,
     hpBase: 115,
+    damage: 7,
+    hp: 115,
+    description: 'Recupera a carta aliada mais ferida.',
   }),
   Object.freeze({
     id: 'falcao_veloz',
@@ -22,6 +28,9 @@ const CARDS = Object.freeze([
     rarity: 'comum',
     damageBase: 15,
     hpBase: 75,
+    damage: 15,
+    hp: 75,
+    description: 'Ataca com velocidade e força.',
   }),
   Object.freeze({
     id: 'aranha_nevoa',
@@ -30,6 +39,9 @@ const CARDS = Object.freeze([
     rarity: 'comum',
     damageBase: 10,
     hpBase: 100,
+    damage: 10,
+    hp: 100,
+    description: 'Envenena o alvo por vários turnos.',
   }),
   Object.freeze({
     id: 'cavaleiro_rubro',
@@ -38,6 +50,9 @@ const CARDS = Object.freeze([
     rarity: 'rara',
     damageBase: 24,
     hpBase: 130,
+    damage: 24,
+    hp: 130,
+    description: 'Golpes fortes com boa resistência.',
   }),
   Object.freeze({
     id: 'oraculo_azul',
@@ -46,6 +61,9 @@ const CARDS = Object.freeze([
     rarity: 'rara',
     damageBase: 15,
     hpBase: 175,
+    damage: 15,
+    hp: 175,
+    description: 'Sustenta a equipe com cura.',
   }),
   Object.freeze({
     id: 'atiradora_cometa',
@@ -54,6 +72,9 @@ const CARDS = Object.freeze([
     rarity: 'rara',
     damageBase: 29,
     hpBase: 105,
+    damage: 29,
+    hp: 105,
+    description: 'Dano contínuo de alta velocidade.',
   }),
   Object.freeze({
     id: 'serpente_umbra',
@@ -62,6 +83,9 @@ const CARDS = Object.freeze([
     rarity: 'rara',
     damageBase: 21,
     hpBase: 145,
+    damage: 21,
+    hp: 145,
+    description: 'Aplica veneno e desgasta o inimigo.',
   }),
   Object.freeze({
     id: 'dragao_celeste',
@@ -70,6 +94,9 @@ const CARDS = Object.freeze([
     rarity: 'ultra',
     damageBase: 43,
     hpBase: 220,
+    damage: 43,
+    hp: 220,
+    description: 'Ataques poderosos e muita vida.',
   }),
   Object.freeze({
     id: 'sacerdotisa_estelar',
@@ -78,6 +105,9 @@ const CARDS = Object.freeze([
     rarity: 'ultra',
     damageBase: 27,
     hpBase: 275,
+    damage: 27,
+    hp: 275,
+    description: 'Grande suporte para toda a equipe.',
   }),
   Object.freeze({
     id: 'fenda_rasante',
@@ -86,6 +116,9 @@ const CARDS = Object.freeze([
     rarity: 'ultra',
     damageBase: 52,
     hpBase: 180,
+    damage: 52,
+    hp: 180,
+    description: 'Dano explosivo em sequência.',
   }),
   Object.freeze({
     id: 'hidra_corrosiva',
@@ -94,6 +127,9 @@ const CARDS = Object.freeze([
     rarity: 'ultra',
     damageBase: 38,
     hpBase: 245,
+    damage: 38,
+    hp: 245,
+    description: 'Veneno intenso que continua causando dano.',
   }),
 ]);
 
