@@ -50,6 +50,7 @@ import {
   handleChatXpMessage,
   initializeChatXp,
 } from './events/chat-xp.js';
+import { connectGameDatabase } from './game/database.js';
 
 // Força stdout sem buffer para que os logs apareçam no workflow
 process.stdout.write('');
@@ -107,6 +108,10 @@ client.once(Events.ClientReady, (c) => {
   initializeChatXp(c).catch((err) =>
     console.error('[ChatXP] Erro ao preparar cargos de chat:', err)
   );
+  connectGameDatabase().catch((error: unknown) => {
+    const errorName = error instanceof Error ? error.name : 'Erro desconhecido';
+    console.error(`[GameDB] Não foi possível conectar ao banco (${errorName}); detalhe omitido por segurança.`);
+  });
 });
 
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
