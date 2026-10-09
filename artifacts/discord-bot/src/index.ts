@@ -9,10 +9,9 @@ import {
   ChannelType,
   PermissionFlagsBits,
 } from 'discord.js';
-import { MongoClient } from 'mongodb';
 
 import antispam from './antispam.js';
-import { loadConfig } from './config.js';
+import { flushConfigPersistence, loadConfig } from './config.js';
 import { handleSorteio, handleSorteioModal } from './commands/sorteio.js';
 import { handleCardGameButton, handleCardGameCommand } from './commands/cartas.js';
 import { handleWelcome } from './events/welcome.js';
@@ -347,45 +346,99 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
 // esta instância se desliga sozinha, pra nunca ter dois bots ativos ao mesmo tempo.
 const SINGLETON_INSTANCE_ID = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const SINGLETON_STALE_MS = 20_000; // se a outra instância não der sinal de vida há 20s, considera ela morta
+const SINGLETON_LOCK_ID = 'pet-do-gg';
 
 async function tryAcquireSingletonLock(): Promise<boolean> {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) {
-    console.warn('[Startup] MONGODB_URI não configurado — não é possível checar instâncias duplicadas.');
-    return true; // sem Mongo não dá pra verificar; segue normal
-  }
+  const database = await connectGameDatabase();
+  const collection = database.collection<{
+    _id: string;
+    instanceId?: string;
+    lastHeartbeat?: number;
+    startedAt?: number;
+  }>('bot_singleton_locks');
+  const now = Date.now();
+
   try {
-    const mongoClient = new MongoClient(uri);
-    await mongoClient.connect();
-    const collection = mongoClient.db('petdogg').collection<{
-      _id: string;
-      instanceId?: string;
-      lastHeartbeat?: number;
-      startedAt?: number;
-    }>('bot_lock');
-    const now = Date.now();
-    const existing = await collection.findOne({ _id: 'singleton' });
-    if (existing && typeof existing.lastHeartbeat === 'number' && now - existing.lastHeartbeat < SINGLETON_STALE_MS) {
-      await mongoClient.close();
-      return false; // outra instância ativa agora
-    }
-    await collection.updateOne(
-      { _id: 'singleton' },
-      { $set: { instanceId: SINGLETON_INSTANCE_ID, lastHeartbeat: now, startedAt: now } },
+    const result = await collection.updateOne(
+      {
+        _id: SINGLETON_LOCK_ID,
+        $or: [
+          { lastHeartbeat: { $lte: now - SINGLETON_STALE_MS } },
+          { lastHeartbeat: { $exists: false } },
+          { instanceId: SINGLETON_INSTANCE_ID },
+        ],
+      },
+      {
+        $set: {
+          instanceId: SINGLETON_INSTANCE_ID,
+          lastHeartbeat: now,
+          startedAt: now,
+        },
+      },
       { upsert: true },
     );
-    // renova o "sinal de vida" a cada 10s enquanto este processo estiver rodando
-    setInterval(() => {
-      collection.updateOne(
-        { _id: 'singleton', instanceId: SINGLETON_INSTANCE_ID },
-        { $set: { lastHeartbeat: Date.now() } },
-      ).catch((err) => console.error('[Startup] Erro ao renovar heartbeat da instância:', err));
-    }, 10_000);
-    return true;
-  } catch (err) {
-    console.error('[Startup] Erro ao checar instância única; seguindo mesmo assim:', err);
-    return true;
+    if (result.matchedCount !== 1 && result.upsertedCount !== 1) return false;
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 11000
+    ) {
+      return false;
+    }
+    throw error;
   }
+
+  let heartbeatInFlight = false;
+  const heartbeat = setInterval(() => {
+    if (heartbeatInFlight) return;
+    heartbeatInFlight = true;
+    void collection
+      .updateOne(
+        { _id: SINGLETON_LOCK_ID, instanceId: SINGLETON_INSTANCE_ID },
+        { $set: { lastHeartbeat: Date.now() } },
+      )
+      .then((result) => {
+        if (result.matchedCount !== 1) {
+          console.error('[Startup] A trava da instância foi perdida; encerrando para evitar duplicidade.');
+          process.exit(1);
+        }
+      })
+      .catch((error: unknown) => {
+        const name = error instanceof Error ? error.name : 'Erro desconhecido';
+        console.error(`[Startup] Falha no heartbeat da instância (${name}); encerrando por segurança.`);
+        process.exit(1);
+      })
+      .finally(() => {
+        heartbeatInFlight = false;
+      });
+  }, 10_000);
+  heartbeat.unref();
+
+  let shuttingDown = false;
+  const releaseSingletonLock = () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    clearInterval(heartbeat);
+    void (async () => {
+      await flushConfigPersistence();
+      client.destroy();
+      await collection.deleteOne({
+        _id: SINGLETON_LOCK_ID,
+        instanceId: SINGLETON_INSTANCE_ID,
+      });
+      process.exit(0);
+    })().catch((error: unknown) => {
+      const name = error instanceof Error ? error.name : 'Erro desconhecido';
+      console.error(`[Startup] Não foi possível liberar a trava (${name}).`);
+      process.exit(1);
+    });
+  };
+  process.once('SIGTERM', releaseSingletonLock);
+  process.once('SIGINT', releaseSingletonLock);
+
+  return true;
 }
 
 async function startBot(): Promise<void> {
@@ -398,6 +451,7 @@ async function startBot(): Promise<void> {
     );
     process.exit(0);
   }
+  console.log('[Startup] Trava MongoDB obtida; iniciando conexão Discord.');
   await client.login(token);
 }
 

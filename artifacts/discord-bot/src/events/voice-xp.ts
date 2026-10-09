@@ -9,6 +9,7 @@ import {
 
 import {
   addVoiceXpSeconds,
+  flushConfigPersistence,
   getConfig,
   getVoiceXpRoleId,
   getVoiceXpSeconds,
@@ -59,6 +60,7 @@ export async function initializeVoiceXp(client: Client): Promise<void> {
     }
   }
 
+  await flushConfigPersistence();
   console.log(`[VoiceXP] ${roleCache.size} servidor(es) preparado(s).`);
 }
 
@@ -135,6 +137,7 @@ async function finishVoiceSession(guild: Guild, userId: string): Promise<void> {
   activeSessions.delete(key);
   const elapsedSeconds = Math.floor((Date.now() - session.joinedAt) / 1_000);
   const totalSeconds = addVoiceXpSeconds(userId, elapsedSeconds);
+  await flushConfigPersistence();
   if (member) await updateVoiceXpRole(member, totalSeconds);
 }
 

@@ -9,6 +9,7 @@ import {
 
 import {
   addChatXp,
+  flushConfigPersistence,
   getChatXp,
   getChatXpLastAwardAt,
   getChatXpRoleId,
@@ -64,6 +65,7 @@ export async function initializeChatXp(client: Client): Promise<void> {
     }
   }
 
+  await flushConfigPersistence();
   console.log(`[ChatXP] ${roleCache.size} servidor(es) preparado(s).`);
 }
 
@@ -101,6 +103,7 @@ export async function handleChatXpMessage(message: Message): Promise<void> {
   setChatXpLastAwardAt(userId, now);
 
   const totalXp = addChatXp(userId, CHAT_XP_PER_MESSAGE);
+  await flushConfigPersistence();
   const member = message.member ?? await message.guild.members.fetch(userId).catch(() => null);
   if (member) await updateChatXpRole(member, totalXp);
 }

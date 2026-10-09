@@ -7,8 +7,60 @@ import {
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { getConfig } from '../config.js';
+import { connectGameDatabase } from '../game/database.js';
 
 const LOCAL_BANNER = join(process.cwd(), 'assets', 'banner-boas-vindas.png');
+const WELCOME_DEDUPE_WINDOW_MS = 30_000;
+
+interface WelcomeDeliveryLock {
+  _id: string;
+  guildId: string;
+  memberId: string;
+  expiresAt?: Date;
+  updatedAt: Date;
+}
+
+function isDuplicateMongoKeyError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 11000
+  );
+}
+
+async function reserveWelcomeMessage(member: GuildMember): Promise<boolean> {
+  const database = await connectGameDatabase();
+  const collection = database.collection<WelcomeDeliveryLock>('welcome_delivery_locks');
+  await collection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+  const now = Date.now();
+  const lockId = `${member.guild.id}:${member.id}`;
+  try {
+    const result = await collection.updateOne(
+      {
+        _id: lockId,
+        $or: [
+          { expiresAt: { $lte: new Date(now) } },
+          { expiresAt: { $exists: false } },
+        ],
+      },
+      {
+        $set: {
+          guildId: member.guild.id,
+          memberId: member.id,
+          expiresAt: new Date(now + WELCOME_DEDUPE_WINDOW_MS),
+          updatedAt: new Date(now),
+        },
+      },
+      { upsert: true },
+    );
+    return result.matchedCount === 1 || result.upsertedCount === 1;
+  } catch (error) {
+    if (isDuplicateMongoKeyError(error)) return false;
+    throw error;
+  }
+}
 
 export async function handleWelcome(member: GuildMember): Promise<void> {
   const channelId = process.env.WELCOME_CHANNEL_ID;
@@ -28,6 +80,11 @@ export async function handleWelcome(member: GuildMember): Promise<void> {
       `[Welcome] Canal ${channelId} não encontrado ou não é de texto. ` +
       'Verifique se o bot tem permissão de visualizar e enviar mensagens nesse canal.'
     );
+    return;
+  }
+
+  if (!(await reserveWelcomeMessage(member))) {
+    console.log(`[Welcome] Boas-vindas duplicada suprimida para ${member.id}.`);
     return;
   }
 

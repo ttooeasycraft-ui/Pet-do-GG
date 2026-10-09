@@ -1,16 +1,19 @@
 /**
- * Gerenciador de configuração persistente do bot.
- * Lê e escreve em data/config.json (relativo ao cwd do processo).
- *
- * Persistência:
- *   - Replit dev: sobrevive a restarts do workflow ✅
- *   - Railway:    sobrevive a restarts do container ✅
- *                 resetada a cada novo deploy (recompilar imagem) ⚠️
+ * MongoDB é a fonte principal; data/config.json permanece como backup local.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Collection } from 'mongodb';
+import { connectGameDatabase } from './game/database.js';
 
 const CONFIG_PATH = join(process.cwd(), 'data', 'config.json');
+const CONFIG_DOCUMENT_ID = 'pet-do-gg';
+
+interface StoredBotConfig {
+  _id: string;
+  value: Partial<BotConfig>;
+  updatedAt: Date;
+}
 
 export interface BotConfig {
   welcome: {
@@ -90,6 +93,7 @@ export const DEFAULTS: BotConfig = {
 };
 
 let _config: BotConfig = deepMerge(DEFAULTS, {});
+let persistQueue: Promise<void> = Promise.resolve();
 
 function deepMerge(defaults: BotConfig, saved: Partial<BotConfig>): BotConfig {
   const savedTicket = (saved.ticket ?? {}) as Partial<BotConfig['ticket']>;
@@ -186,18 +190,68 @@ function deepMerge(defaults: BotConfig, saved: Partial<BotConfig>): BotConfig {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function loadConfig(): void {
+export async function loadConfig(): Promise<void> {
+  let localConfig: Partial<BotConfig> | null = null;
   try {
     if (existsSync(CONFIG_PATH)) {
-      const saved = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Partial<BotConfig>;
-      _config = deepMerge(DEFAULTS, saved);
-      migrateWelcomeText();
-      console.log('[Config] Carregada de', CONFIG_PATH);
-    } else {
-      console.log('[Config] Nenhum arquivo salvo — usando valores padrão.');
+      localConfig = JSON.parse(readFileSync(CONFIG_PATH, 'utf-8')) as Partial<BotConfig>;
     }
   } catch (err) {
-    console.warn('[Config] Erro ao carregar config, usando padrões:', err);
+    console.warn('[Config] Não foi possível ler o backup local:', err);
+  }
+
+  let collection: Collection<StoredBotConfig>;
+  let stored: StoredBotConfig | null;
+  try {
+    const database = await connectGameDatabase();
+    collection = database.collection<StoredBotConfig>('bot_config');
+    stored = await collection.findOne({ _id: CONFIG_DOCUMENT_ID });
+  } catch (error) {
+    _config = deepMerge(DEFAULTS, localConfig ?? {});
+    const migrated = migrateWelcomeText();
+    if (localConfig && migrated) writeLocalBackup(snapshotConfig());
+    const message = error instanceof Error ? error.message : 'erro desconhecido';
+    console.error(`[Config] MongoDB indisponível; usando backup local (${message}).`);
+    return;
+  }
+
+  if (stored) {
+    if (!stored.value || typeof stored.value !== 'object') {
+      _config = deepMerge(DEFAULTS, localConfig ?? {});
+      console.error('[Config] Documento do MongoDB inválido; backup local mantido.');
+      return;
+    }
+    _config = deepMerge(DEFAULTS, stored.value);
+    const migrated = migrateWelcomeText();
+    const snapshot = snapshotConfig();
+    writeLocalBackup(snapshot);
+    if (migrated) {
+      try {
+        await saveConfigToMongo(snapshot, collection);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'erro desconhecido';
+        console.error(`[Config] Migração não salva no MongoDB (${message}); backup local mantido.`);
+      }
+    }
+    console.log('[Config] Carregada do MongoDB; backup local atualizado.');
+    return;
+  }
+
+  // Primeira migração: copia o arquivo atual para o Mongo sem perder XP ou ranking.
+  _config = deepMerge(DEFAULTS, localConfig ?? {});
+  migrateWelcomeText();
+  const snapshot = snapshotConfig();
+  writeLocalBackup(snapshot);
+  try {
+    await saveConfigToMongo(snapshot, collection);
+    console.log(
+      localConfig
+        ? '[Config] Backup local migrado para o MongoDB.'
+        : '[Config] Configuração padrão inicializada no MongoDB.',
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'erro desconhecido';
+    console.error(`[Config] Não foi possível inicializar o MongoDB (${message}); backup local mantido.`);
   }
 }
 
@@ -371,11 +425,12 @@ export function getTicketRanking(): Array<{
 
 // ─── Internal ─────────────────────────────────────────────────────────────────
 
-function migrateWelcomeText(): void {
+function migrateWelcomeText(): boolean {
   if (!_config.welcome.text.includes('{contagem}')) {
     _config.welcome.text += '\nVocê é o nosso **{contagem}º** membro! 🐾';
-    persist();
+    return true;
   }
+  return false;
 }
 
 function trimStats(): void {
@@ -387,11 +442,45 @@ function trimStats(): void {
     .slice(-1000);
 }
 
-function persist(): void {
+function snapshotConfig(): BotConfig {
+  return JSON.parse(JSON.stringify(_config)) as BotConfig;
+}
+
+function writeLocalBackup(snapshot: BotConfig): void {
   try {
     mkdirSync(join(process.cwd(), 'data'), { recursive: true });
-    writeFileSync(CONFIG_PATH, JSON.stringify(_config, null, 2), 'utf-8');
+    writeFileSync(CONFIG_PATH, JSON.stringify(snapshot, null, 2), 'utf-8');
   } catch (err) {
-    console.error('[Config] Erro ao salvar config:', err);
+    console.error('[Config] Erro ao salvar o backup local:', err);
   }
+}
+
+async function saveConfigToMongo(
+  snapshot: BotConfig,
+  collection?: Collection<StoredBotConfig>,
+): Promise<void> {
+  const targetCollection =
+    collection ??
+    (await connectGameDatabase()).collection<StoredBotConfig>('bot_config');
+  await targetCollection.updateOne(
+    { _id: CONFIG_DOCUMENT_ID },
+    { $set: { value: snapshot, updatedAt: new Date() } },
+    { upsert: true },
+  );
+}
+
+function persist(): void {
+  const snapshot = snapshotConfig();
+  writeLocalBackup(snapshot);
+  persistQueue = persistQueue
+    .catch(() => undefined)
+    .then(() => saveConfigToMongo(snapshot))
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'erro desconhecido';
+      console.error(`[Config] Não foi possível salvar no MongoDB (${message}); backup local mantido.`);
+    });
+}
+
+export async function flushConfigPersistence(): Promise<void> {
+  await persistQueue;
 }
