@@ -84,9 +84,6 @@ if (!isValidSnowflake(guildId)) {
   );
 }
 
-// ── Carrega configuração persistida ──────────────────────────────────────────
-loadConfig();
-
 // ── Contagem de votos em memória (por mensagem) ───────────────────────────────
 const voteData = new Map<string, { sim: number; nao: number; voters: Set<string> }>();
 
@@ -343,4 +340,13 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   }
 });
 
-client.login(token);
+async function startBot(): Promise<void> {
+  await loadConfig();
+  await client.login(token);
+}
+
+void startBot().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : 'erro desconhecido';
+  console.error(`[Startup] Não foi possível iniciar o bot: ${message}`);
+  process.exitCode = 1;
+});
