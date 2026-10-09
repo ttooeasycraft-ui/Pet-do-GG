@@ -9,6 +9,7 @@ import {
   ChannelType,
   PermissionFlagsBits,
 } from 'discord.js';
+import { MongoClient } from 'mongodb';
 
 import antispam from './antispam.js';
 import { loadConfig } from './config.js';
@@ -94,6 +95,7 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.MessageContent,
   ],
 });
 
@@ -340,13 +342,67 @@ client.on(Events.InteractionCreate, async (interaction: Interaction) => {
   }
 });
 
+// ── Trava de instância única ────────────────────────────────────────────────
+// Se já existe outra instância deste bot online (detectado via MongoDB),
+// esta instância se desliga sozinha, pra nunca ter dois bots ativos ao mesmo tempo.
+const SINGLETON_INSTANCE_ID = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const SINGLETON_STALE_MS = 20_000; // se a outra instância não der sinal de vida há 20s, considera ela morta
+
+async function tryAcquireSingletonLock(): Promise<boolean> {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    console.warn('[Startup] MONGODB_URI não configurado — não é possível checar instâncias duplicadas.');
+    return true; // sem Mongo não dá pra verificar; segue normal
+  }
+  try {
+    const mongoClient = new MongoClient(uri);
+    await mongoClient.connect();
+    const collection = mongoClient.db('petdogg').collection<{
+      _id: string;
+      instanceId?: string;
+      lastHeartbeat?: number;
+      startedAt?: number;
+    }>('bot_lock');
+    const now = Date.now();
+    const existing = await collection.findOne({ _id: 'singleton' });
+    if (existing && typeof existing.lastHeartbeat === 'number' && now - existing.lastHeartbeat < SINGLETON_STALE_MS) {
+      await mongoClient.close();
+      return false; // outra instância ativa agora
+    }
+    await collection.updateOne(
+      { _id: 'singleton' },
+      { $set: { instanceId: SINGLETON_INSTANCE_ID, lastHeartbeat: now, startedAt: now } },
+      { upsert: true },
+    );
+    // renova o "sinal de vida" a cada 10s enquanto este processo estiver rodando
+    setInterval(() => {
+      collection.updateOne(
+        { _id: 'singleton', instanceId: SINGLETON_INSTANCE_ID },
+        { $set: { lastHeartbeat: Date.now() } },
+      ).catch((err) => console.error('[Startup] Erro ao renovar heartbeat da instância:', err));
+    }, 10_000);
+    return true;
+  } catch (err) {
+    console.error('[Startup] Erro ao checar instância única; seguindo mesmo assim:', err);
+    return true;
+  }
+}
+
 async function startBot(): Promise<void> {
   await loadConfig();
+  const acquiredLock = await tryAcquireSingletonLock();
+  if (!acquiredLock) {
+    console.error(
+      '[Startup] Outra instância deste bot já está rodando agora (detectado via MongoDB). ' +
+      'Encerrando esta instância para evitar duplicação de mensagens, XP e banimentos.',
+    );
+    process.exit(0);
+  }
   await client.login(token);
 }
 
 void startBot().catch((error: unknown) => {
   const message = error instanceof Error ? error.message : 'erro desconhecido';
   console.error(`[Startup] Não foi possível iniciar o bot: ${message}`);
-  process.exitCode = 1;
+  process.exit(1);
 });
